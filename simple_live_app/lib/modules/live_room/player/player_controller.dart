@@ -308,7 +308,7 @@ mixin PlayerSystemMixin on PlayerMixin, PlayerStateMixin, PlayerDanmakuMixin {
       }
     } catch (e) {
       fullScreenState.value = false;
-      Log.e("Enter fullscreen failed: $e");
+      Log.e("Enter fullscreen failed: $e", StackTrace.current);
     }
   }
 
@@ -332,7 +332,7 @@ mixin PlayerSystemMixin on PlayerMixin, PlayerStateMixin, PlayerDanmakuMixin {
       }
     } catch (e) {
       fullScreenState.value = true;
-      Log.e("Exit fullscreen failed: $e");
+      Log.e("Exit fullscreen failed: $e", StackTrace.current);
     }
   }
 
