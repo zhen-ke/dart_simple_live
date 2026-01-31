@@ -5,25 +5,30 @@ on:
     inputs:
       branch:
         description: 'Branch to build'
-        required: false
+        required: true
         default: 'dev'
         type: choice
         options:
           - dev
           - master
       version:
-        description: 'Version tag for release (e.g., v1.0.0)'
+        description: 'Version tag for release (e.g. mac_v1.0.0)'
         required: false
         default: ''
         type: string
       upload_release:
         description: 'Upload to GitHub Release'
-        required: false
+        required: true
         default: true
         type: boolean
+
   push:
     tags:
-      - "mac_v*"
+      - 'mac_v*'
+
+concurrency:
+  group: macos-release
+  cancel-in-progress: true
 
 jobs:
   build-macos:
@@ -32,54 +37,68 @@ jobs:
       contents: write
 
     steps:
-      # 签出代码
-      - name: Checkout code
+      # -------------------------
+      # Checkout
+      # -------------------------
+      - name: Checkout source
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.branch || '' }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/heads/{0}', github.event.inputs.branch) || github.ref }}
+          fetch-depth: 0
 
-      # 设置 Flutter 环境
+      # -------------------------
+      # Flutter environment
+      # -------------------------
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.38.x"
+          flutter-version: '3.38.x'
           cache: true
 
-      # 打开 macOS Desktop 支持
-      - name: Enable Flutter macOS Desktop
+      - name: Enable macOS desktop
         run: flutter config --enable-macos-desktop
 
-      # 更新 Flutter 的 packages
+      - name: Flutter doctor
+        run: flutter doctor -v
+
+      # -------------------------
+      # Dependencies
+      # -------------------------
       - name: Restore packages
-        run: |
-          cd simple_live_app
-          flutter pub get
+        working-directory: simple_live_app
+        run: flutter pub get
 
-      # 安装 appdmg (用于创建 DMG)
-      - name: Install appdmg
-        run: npm install -g appdmg
-
-      # 安装 flutter_distributor
       - name: Install flutter_distributor
-        run: dart pub global activate flutter_distributor
-
-      # 构建 macOS 应用 (DMG 和 ZIP)
-      - name: Build macOS
         run: |
-          cd simple_live_app
-          flutter_distributor package --platform macos --targets dmg,zip --skip-clean
+          dart pub global activate flutter_distributor ^0.4.6
+          echo "$HOME/.pub-cache/bin" >> $GITHUB_PATH
 
-      # 上传 macOS 构建产物至 Artifacts
-      - name: Upload macOS artifacts
+      # -------------------------
+      # Build
+      # -------------------------
+      - name: Build macOS (dmg + zip)
+        working-directory: simple_live_app
+        run: |
+          flutter_distributor package \
+            --platform macos \
+            --targets dmg,zip \
+            --skip-clean
+
+      # -------------------------
+      # Artifacts
+      # -------------------------
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: macos-build
+          name: macOS-${{ github.run_number }}
           path: |
             simple_live_app/build/dist/*/*.dmg
             simple_live_app/build/dist/*/*.zip
 
-      # 获取版本号（从输入或 tag 提取）
-      - name: Get version
+      # -------------------------
+      # Version resolve
+      # -------------------------
+      - name: Resolve version
         id: version
         run: |
           if [ -n "${{ github.event.inputs.version }}" ]; then
@@ -87,26 +106,32 @@ jobs:
           elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
             echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
           else
-            echo "VERSION=dev-$(date +'%Y%m%d-%H%M%S')" >> $GITHUB_OUTPUT
+            echo "VERSION=mac_dev_$(date +'%Y%m%d_%H%M%S')" >> $GITHUB_OUTPUT
           fi
 
       - name: Echo version
-        run: echo "Version ${{ steps.version.outputs.VERSION }}"
+        run: echo "Release version: ${{ steps.version.outputs.VERSION }}"
 
-      # 上传至 GitHub Release
-      - name: Upload to Release
-        if: github.event.inputs.upload_release != 'false'
+      # -------------------------
+      # Release
+      # -------------------------
+      - name: Upload to GitHub Release
+        if: |
+          github.event_name == 'push' ||
+          github.event.inputs.upload_release == 'true'
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ steps.version.outputs.VERSION }}
-          name: "macOS ${{ steps.version.outputs.VERSION }}"
+          name: macOS ${{ steps.version.outputs.VERSION }}
           generate_release_notes: true
           prerelease: ${{ contains(steps.version.outputs.VERSION, 'dev') || contains(steps.version.outputs.VERSION, 'beta') || contains(steps.version.outputs.VERSION, 'alpha') }}
-          token: ${{ secrets.GITHUB_TOKEN }}
           files: |
             simple_live_app/build/dist/*/*.dmg
             simple_live_app/build/dist/*/*.zip
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      # 完成
+      # -------------------------
+      # Done
+      # -------------------------
       - name: Build completed
-        run: echo "🍏 macOS build completed with status ${{ job.status }}"
+        run: echo "🍏 macOS build finished with status ${{ job.status }}"
