@@ -106,6 +106,7 @@ Future initWindow() async {
   }
   await windowManager.ensureInitialized();
   WindowOptions windowOptions = const WindowOptions(
+    size: Size(1200, 800),
     minimumSize: Size(280, 280),
     center: true,
     title: "Simple Live",
