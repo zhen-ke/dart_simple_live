@@ -91,11 +91,11 @@ jobs:
           fi
 
       - name: Echo version
-        run: echo "Version: ${{ steps.version.outputs.VERSION }}"
+        run: echo "Version ${{ steps.version.outputs.VERSION }}"
 
       # 上传至 GitHub Release
       - name: Upload to Release
-        if: ${{ github.event.inputs.upload_release != 'false' }}
+        if: github.event.inputs.upload_release != 'false'
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ steps.version.outputs.VERSION }}
