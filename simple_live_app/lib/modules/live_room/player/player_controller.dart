@@ -100,6 +100,18 @@ mixin PlayerStateMixin on PlayerMixin {
   /// 是否处于全屏状态
   RxBool fullScreenState = false.obs;
 
+  DateTime? _lastFullScreenToggle;
+  bool get _canToggleFullScreen {
+    final now = DateTime.now();
+    if (_lastFullScreenToggle == null ||
+        now.difference(_lastFullScreenToggle!) >
+            const Duration(milliseconds: 800)) {
+      _lastFullScreenToggle = now;
+      return true;
+    }
+    return false;
+  }
+
   /// 显示手势Tip
   RxBool showGestureTip = false.obs;
 
@@ -212,6 +224,7 @@ mixin PlayerDanmakuMixin on PlayerStateMixin {
 
   void disposeDanmakuController() {
     danmakuController?.clear();
+    danmakuController = null;
   }
 
   void addDanmaku(List<DanmakuContentItem> items) {
@@ -272,33 +285,55 @@ mixin PlayerSystemMixin on PlayerMixin, PlayerStateMixin, PlayerDanmakuMixin {
   }
 
   /// 进入全屏
-  void enterFullScreen() {
+  Future<void> enterFullScreen() async {
+    if (!_canToggleFullScreen || fullScreenState.value) return;
+    
+    // 先更新状态，让UI立即响应
     fullScreenState.value = true;
-    if (Platform.isAndroid || Platform.isIOS) {
-      //全屏
-      SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: []);
-      if (!isVertical.value) {
-        //横屏
-        setLandscapeOrientation();
+    
+    // 延迟执行系统调用，避免阻塞UI线程
+    await Future.delayed(const Duration(milliseconds: 50));
+    
+    try {
+      if (Platform.isAndroid || Platform.isIOS) {
+        //全屏
+        await SystemChrome.setEnabledSystemUIMode(
+            SystemUiMode.manual, overlays: []);
+        if (!isVertical.value) {
+          //横屏
+          await setLandscapeOrientation();
+        }
+      } else {
+        await windowManager.setFullScreen(true);
       }
-    } else {
-      windowManager.setFullScreen(true);
+    } catch (e) {
+      fullScreenState.value = false;
+      Log.e("Enter fullscreen failed: $e");
     }
-    //danmakuController?.clear();
   }
 
   /// 退出全屏
-  void exitFull() {
-    if (Platform.isAndroid || Platform.isIOS) {
-      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge,
-          overlays: SystemUiOverlay.values);
-      setPortraitOrientation();
-    } else {
-      windowManager.setFullScreen(false);
-    }
+  Future<void> exitFull() async {
+    if (!_canToggleFullScreen || !fullScreenState.value) return;
+    
+    // 先更新状态，让UI立即响应
     fullScreenState.value = false;
-
-    //danmakuController?.clear();
+    
+    // 延迟执行系统调用，避免阻塞UI线程
+    await Future.delayed(const Duration(milliseconds: 50));
+    
+    try {
+      if (Platform.isAndroid || Platform.isIOS) {
+        await SystemChrome.setEnabledSystemUIMode(
+            SystemUiMode.edgeToEdge, overlays: SystemUiOverlay.values);
+        await setPortraitOrientation();
+      } else {
+        await windowManager.setFullScreen(false);
+      }
+    } catch (e) {
+      fullScreenState.value = true;
+      Log.e("Exit fullscreen failed: $e");
+    }
   }
 
   Size? _lastWindowSize;
@@ -854,12 +889,21 @@ class PlayerController extends BaseController
   @override
   void onClose() async {
     Log.w("播放器关闭");
-    windowManager.removeListener(this);
+
+    hideControlsTimer?.cancel();
+    hideControlsTimer = null;
+    hidevolumeTimer?.cancel();
+    hidevolumeTimer = null;
+
     if (smallWindowState.value) {
       exitSmallWindow();
     }
+
+    windowManager.removeListener(this);
+
     disposeStream();
     disposeDanmakuController();
+
     await resetSystem();
     await player.dispose();
     super.onClose();
