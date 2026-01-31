@@ -658,14 +658,36 @@ class PlayerController extends BaseController
         PlayerStateMixin,
         PlayerDanmakuMixin,
         PlayerSystemMixin,
-        PlayerGestureControlMixin {
+        PlayerGestureControlMixin,
+        WindowListener {
   @override
   void onInit() {
     initSystem();
     initStream();
     //设置音量
     player.setVolume(AppSettingsController.instance.playerVolume.value);
+    windowManager.addListener(this);
     super.onInit();
+  }
+
+  @override
+  void onClose() {
+    windowManager.removeListener(this);
+    super.onClose();
+  }
+
+  @override
+  void onWindowEnterFullScreen() {
+    Log.d("Window Enter FullScreen");
+    fullScreenState.value = true;
+    super.onWindowEnterFullScreen();
+  }
+
+  @override
+  void onWindowLeaveFullScreen() {
+    Log.d("Window Leave FullScreen");
+    fullScreenState.value = false;
+    super.onWindowLeaveFullScreen();
   }
 
   StreamSubscription<String>? _errorSubscription;
