@@ -670,11 +670,7 @@ class PlayerController extends BaseController
     super.onInit();
   }
 
-  @override
-  void onClose() {
-    windowManager.removeListener(this);
-    super.onClose();
-  }
+
 
   @override
   void onWindowEnterFullScreen() {
@@ -858,6 +854,7 @@ class PlayerController extends BaseController
   @override
   void onClose() async {
     Log.w("播放器关闭");
+    windowManager.removeListener(this);
     if (smallWindowState.value) {
       exitSmallWindow();
     }
