@@ -43,8 +43,23 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/heads/{0}', github.event.inputs.branch) || github.ref }}
+          # 优化 ref 逻辑：如果是 dispatch，使用输入的 branch；否则使用触发的 ref (tag)
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.branch || github.ref }}
           fetch-depth: 0
+
+      # -------------------------
+      # Node.js & appdmg (关键修复)
+      # -------------------------
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Install appdmg
+        run: |
+          npm install -g appdmg
+          # 将 npm 的 bin 目录添加到 PATH，确保 flutter_distributor 能找到它
+          echo "$(npm config get prefix)/bin" >> $GITHUB_PATH
 
       # -------------------------
       # Flutter environment
@@ -117,13 +132,14 @@ jobs:
       # -------------------------
       - name: Upload to GitHub Release
         if: |
-          github.event_name == 'push' ||
+          github.event_name == 'push' || 
           github.event.inputs.upload_release == 'true'
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ steps.version.outputs.VERSION }}
-          name: macOS ${{ steps.version.outputs.VERSION }}
+          name: "macOS ${{ steps.version.outputs.VERSION }}"
           generate_release_notes: true
+          # 自动判断是否为预览版 (包含 dev, beta, alpha 关键词)
           prerelease: ${{ contains(steps.version.outputs.VERSION, 'dev') || contains(steps.version.outputs.VERSION, 'beta') || contains(steps.version.outputs.VERSION, 'alpha') }}
           files: |
             simple_live_app/build/dist/*/*.dmg
