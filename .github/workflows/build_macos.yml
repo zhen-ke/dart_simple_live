@@ -110,7 +110,7 @@ jobs:
           fi
 
       - name: Echo version
-        run: echo "Release version: ${{ steps.version.outputs.VERSION }}"
+        run: echo "Version ${{ steps.version.outputs.VERSION }}"
 
       # -------------------------
       # Release
