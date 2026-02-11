@@ -266,8 +266,11 @@ class MyApp extends StatelessWidget {
                       if (event is KeyDownEvent &&
                           event.logicalKey == LogicalKeyboardKey.escape) {
                         // ESC退出全屏
-                        // 如果处于全屏状态，退出全屏
+                        // macOS 原生会处理 ESC 退出全屏，避免重复触发转场
                         if (!Platform.isAndroid && !Platform.isIOS) {
+                          if (Platform.isMacOS) {
+                            return;
+                          }
                           if (await windowManager.isFullScreen()) {
                             await windowManager.setFullScreen(false);
                             return;

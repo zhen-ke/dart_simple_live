@@ -228,8 +228,74 @@ mixin PlayerSystemMixin on PlayerMixin, PlayerStateMixin, PlayerDanmakuMixin {
 
   final pip = Floating();
   StreamSubscription<PiPStatus>? _pipSubscription;
+  Timer? _desktopFullScreenSyncTimer;
+  bool _desktopFullScreenTransitioning = false;
+  bool _desktopSyncRunning = false;
+  bool? _pendingDesktopFullScreenState;
 
   //final VolumeController volumeController = VolumeController();
+
+  bool get _isDesktopPlatform => !(Platform.isAndroid || Platform.isIOS);
+
+  void _startDesktopFullScreenSync() {
+    if (!_isDesktopPlatform) {
+      return;
+    }
+    _desktopFullScreenSyncTimer?.cancel();
+    _desktopFullScreenSyncTimer = Timer.periodic(
+      const Duration(milliseconds: 300),
+      (_) => _syncDesktopFullScreenState(),
+    );
+    _syncDesktopFullScreenState();
+  }
+
+  Future<void> _syncDesktopFullScreenState() async {
+    if (!_isDesktopPlatform || _desktopSyncRunning || smallWindowState.value) {
+      return;
+    }
+    _desktopSyncRunning = true;
+    try {
+      final isFullScreen = await windowManager.isFullScreen();
+      if (fullScreenState.value != isFullScreen) {
+        fullScreenState.value = isFullScreen;
+      }
+    } catch (e) {
+      Log.logPrint(e);
+    } finally {
+      _desktopSyncRunning = false;
+    }
+  }
+
+  Future<void> _setDesktopFullScreen(bool fullScreen) async {
+    if (!_isDesktopPlatform) {
+      return;
+    }
+
+    if (_desktopFullScreenTransitioning) {
+      _pendingDesktopFullScreenState = fullScreen;
+      return;
+    }
+
+    _desktopFullScreenTransitioning = true;
+    fullScreenState.value = fullScreen;
+    try {
+      final current = await windowManager.isFullScreen();
+      if (current != fullScreen) {
+        await windowManager.setFullScreen(fullScreen);
+      }
+    } catch (e) {
+      Log.logPrint(e);
+    } finally {
+      _desktopFullScreenTransitioning = false;
+      final pending = _pendingDesktopFullScreenState;
+      _pendingDesktopFullScreenState = null;
+      if (pending != null && pending != fullScreen) {
+        _setDesktopFullScreen(pending);
+      } else {
+        _syncDesktopFullScreenState();
+      }
+    }
+  }
 
   /// 初始化一些系统状态
   void initSystem() async {
@@ -242,6 +308,7 @@ mixin PlayerSystemMixin on PlayerMixin, PlayerStateMixin, PlayerDanmakuMixin {
 
     // 开始隐藏计时
     resetHideControlsTimer();
+    _startDesktopFullScreenSync();
 
     // 进入全屏模式
     if (AppSettingsController.instance.autoFullScreen.value) {
@@ -252,6 +319,10 @@ mixin PlayerSystemMixin on PlayerMixin, PlayerStateMixin, PlayerDanmakuMixin {
   /// 释放一些系统状态
   Future resetSystem() async {
     _pipSubscription?.cancel();
+    _desktopFullScreenSyncTimer?.cancel();
+    _desktopFullScreenSyncTimer = null;
+    _desktopFullScreenTransitioning = false;
+    _pendingDesktopFullScreenState = null;
     //pip.dispose();
     await SystemChrome.setEnabledSystemUIMode(
       SystemUiMode.edgeToEdge,
@@ -273,8 +344,8 @@ mixin PlayerSystemMixin on PlayerMixin, PlayerStateMixin, PlayerDanmakuMixin {
 
   /// 进入全屏
   void enterFullScreen() {
-    fullScreenState.value = true;
     if (Platform.isAndroid || Platform.isIOS) {
+      fullScreenState.value = true;
       //全屏
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: []);
       if (!isVertical.value) {
@@ -282,7 +353,7 @@ mixin PlayerSystemMixin on PlayerMixin, PlayerStateMixin, PlayerDanmakuMixin {
         setLandscapeOrientation();
       }
     } else {
-      windowManager.setFullScreen(true);
+      _setDesktopFullScreen(true);
     }
     //danmakuController?.clear();
   }
@@ -293,10 +364,10 @@ mixin PlayerSystemMixin on PlayerMixin, PlayerStateMixin, PlayerDanmakuMixin {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge,
           overlays: SystemUiOverlay.values);
       setPortraitOrientation();
+      fullScreenState.value = false;
     } else {
-      windowManager.setFullScreen(false);
+      _setDesktopFullScreen(false);
     }
-    fullScreenState.value = false;
 
     //danmakuController?.clear();
   }
