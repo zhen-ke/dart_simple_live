@@ -232,6 +232,8 @@ mixin PlayerSystemMixin on PlayerMixin, PlayerStateMixin, PlayerDanmakuMixin {
   bool _desktopFullScreenTransitioning = false;
   bool _desktopSyncRunning = false;
   bool? _pendingDesktopFullScreenState;
+  DateTime? _desktopLastToggleAt;
+  bool? _desktopLastToggleTarget;
 
   //final VolumeController volumeController = VolumeController();
 
@@ -243,7 +245,7 @@ mixin PlayerSystemMixin on PlayerMixin, PlayerStateMixin, PlayerDanmakuMixin {
     }
     _desktopFullScreenSyncTimer?.cancel();
     _desktopFullScreenSyncTimer = Timer.periodic(
-      const Duration(milliseconds: 300),
+      const Duration(milliseconds: 800),
       (_) => _syncDesktopFullScreenState(),
     );
     _syncDesktopFullScreenState();
@@ -271,12 +273,23 @@ mixin PlayerSystemMixin on PlayerMixin, PlayerStateMixin, PlayerDanmakuMixin {
       return;
     }
 
+    final now = DateTime.now();
+    final recentToggle =
+        _desktopLastToggleAt != null &&
+            now.difference(_desktopLastToggleAt!) <
+                const Duration(milliseconds: 600);
+    if (recentToggle && _desktopLastToggleTarget == fullScreen) {
+      return;
+    }
+
     if (_desktopFullScreenTransitioning) {
       _pendingDesktopFullScreenState = fullScreen;
       return;
     }
 
     _desktopFullScreenTransitioning = true;
+    _desktopLastToggleAt = now;
+    _desktopLastToggleTarget = fullScreen;
     fullScreenState.value = fullScreen;
     try {
       final current = await windowManager.isFullScreen();
@@ -323,6 +336,8 @@ mixin PlayerSystemMixin on PlayerMixin, PlayerStateMixin, PlayerDanmakuMixin {
     _desktopFullScreenSyncTimer = null;
     _desktopFullScreenTransitioning = false;
     _pendingDesktopFullScreenState = null;
+    _desktopLastToggleAt = null;
+    _desktopLastToggleTarget = null;
     //pip.dispose();
     await SystemChrome.setEnabledSystemUIMode(
       SystemUiMode.edgeToEdge,

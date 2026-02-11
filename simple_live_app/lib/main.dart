@@ -20,6 +20,7 @@ import 'package:simple_live_app/app/utils/listen_fourth_button.dart';
 import 'package:simple_live_app/models/db/follow_user.dart';
 import 'package:simple_live_app/models/db/follow_user_tag.dart';
 import 'package:simple_live_app/models/db/history.dart';
+import 'package:simple_live_app/modules/live_room/live_room_controller.dart';
 import 'package:simple_live_app/modules/other/debug_log_page.dart';
 import 'package:simple_live_app/routes/app_pages.dart';
 import 'package:simple_live_app/routes/route_path.dart';
@@ -217,6 +218,24 @@ class MyApp extends StatelessWidget {
           loadingBuilder: ((msg) => const AppLoaddingWidget()),
           //字体大小不跟随系统变化
           builder: (context, child) {
+            Future<bool> exitDesktopFullscreenWithController() async {
+              if (Platform.isAndroid || Platform.isIOS) {
+                return false;
+              }
+              if (Get.isRegistered<LiveRoomController>()) {
+                final controller = Get.find<LiveRoomController>();
+                if (controller.fullScreenState.value) {
+                  controller.exitFull();
+                  return true;
+                }
+              }
+              if (await windowManager.isFullScreen()) {
+                await windowManager.setFullScreen(false);
+                return true;
+              }
+              return false;
+            }
+
             // Fix for HyperOS windowed-mode Flutter bug:
             // - Values > 50 indicate the bug (windowed mode on HyperOS)
             // - Values == 0 are valid for fullscreen/immersive mode and must NOT be treated as abnormal
@@ -249,11 +268,8 @@ class MyApp extends StatelessWidget {
                       (FourthButtonTapGestureRecognizer instance) {
                         instance.onTapDown = (TapDownDetails details) async {
                           //如果处于全屏状态，退出全屏
-                          if (!Platform.isAndroid && !Platform.isIOS) {
-                            if (await windowManager.isFullScreen()) {
-                              await windowManager.setFullScreen(false);
-                              return;
-                            }
+                          if (await exitDesktopFullscreenWithController()) {
+                            return;
                           }
                           Get.back();
                         };
@@ -262,19 +278,13 @@ class MyApp extends StatelessWidget {
                   },
                   child: KeyboardListener(
                     focusNode: FocusNode(),
+                    autofocus: true,
                     onKeyEvent: (KeyEvent event) async {
                       if (event is KeyDownEvent &&
                           event.logicalKey == LogicalKeyboardKey.escape) {
                         // ESC退出全屏
-                        // macOS 原生会处理 ESC 退出全屏，避免重复触发转场
-                        if (!Platform.isAndroid && !Platform.isIOS) {
-                          if (Platform.isMacOS) {
-                            return;
-                          }
-                          if (await windowManager.isFullScreen()) {
-                            await windowManager.setFullScreen(false);
-                            return;
-                          }
+                        if (await exitDesktopFullscreenWithController()) {
+                          return;
                         }
                       }
                     },
