@@ -467,24 +467,30 @@ class LiveRoomPage extends GetView<LiveRoomController> {
             Expanded(
               child: TabBarView(
                 children: [
-                  Obx(
-                    () => Stack(
+                  Obx(() {
+                    final textGap =
+                        AppSettingsController.instance.chatTextGap.value;
+                    final textSize =
+                        AppSettingsController.instance.chatTextSize.value;
+                    final bubbleStyle =
+                        AppSettingsController.instance.chatBubbleStyle.value;
+                    return Stack(
                       children: [
                         ListView.separated(
                           controller: controller.scrollController,
-                          separatorBuilder: (_, i) => Obx(
-                            () => SizedBox(
-                              // *2与原来的EdgeInsets.symmetric(vertical: )做兼容
-                              height: AppSettingsController
-                                      .instance.chatTextGap.value *
-                                  2,
-                            ),
+                          separatorBuilder: (_, i) => SizedBox(
+                            // *2与原来的EdgeInsets.symmetric(vertical: )做兼容
+                            height: textGap * 2,
                           ),
                           padding: AppStyle.edgeInsetsA12,
                           itemCount: controller.messages.length,
                           itemBuilder: (_, i) {
                             var item = controller.messages[i];
-                            return buildMessageItem(item);
+                            return buildMessageItem(
+                              item,
+                              textSize: textSize,
+                              bubbleStyle: bubbleStyle,
+                            );
                           },
                         ),
                         Visibility(
@@ -503,8 +509,8 @@ class LiveRoomPage extends GetView<LiveRoomController> {
                           ),
                         ),
                       ],
-                    ),
-                  ),
+                    );
+                  }),
                   if (controller.site.id == Constant.kBiliBili)
                     buildSuperChats(),
                   buildFollowList(),
@@ -518,80 +524,78 @@ class LiveRoomPage extends GetView<LiveRoomController> {
     );
   }
 
-  Widget buildMessageItem(LiveMessage message) {
+  Widget buildMessageItem(
+    LiveMessage message, {
+    required double textSize,
+    required bool bubbleStyle,
+  }) {
     if (message.userName == "LiveSysMessage") {
-      return Obx(
-        () => Text(
-          message.message,
-          style: TextStyle(
-            color: Colors.grey,
-            fontSize: AppSettingsController.instance.chatTextSize.value,
-          ),
+      return Text(
+        message.message,
+        style: TextStyle(
+          color: Colors.grey,
+          fontSize: textSize,
         ),
       );
     }
 
-    return Obx(
-      () => AppSettingsController.instance.chatBubbleStyle.value
-          ? Row(
-              mainAxisAlignment: MainAxisAlignment.start,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Flexible(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.blueGrey.withAlpha(25),
-                      //borderRadius: AppStyle.radius8,
-                      borderRadius: const BorderRadius.only(
-                        topRight: Radius.circular(12),
-                        bottomLeft: Radius.circular(12),
-                        bottomRight: Radius.circular(12),
-                      ),
+    return bubbleStyle
+        ? Row(
+            mainAxisAlignment: MainAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Flexible(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.blueGrey.withAlpha(25),
+                    //borderRadius: AppStyle.radius8,
+                    borderRadius: const BorderRadius.only(
+                      topRight: Radius.circular(12),
+                      bottomLeft: Radius.circular(12),
+                      bottomRight: Radius.circular(12),
                     ),
-                    padding:
-                        AppStyle.edgeInsetsA4.copyWith(left: 12, right: 12),
-                    child: Text.rich(
-                      TextSpan(
-                        text: "${message.userName}：",
-                        style: TextStyle(
-                          color: Colors.grey,
-                          fontSize:
-                              AppSettingsController.instance.chatTextSize.value,
-                        ),
-                        children: [
-                          TextSpan(
-                            text: message.message,
-                            style: TextStyle(
-                              color: Get.isDarkMode
-                                  ? Colors.white
-                                  : AppColors.black333,
-                            ),
-                          )
-                        ],
+                  ),
+                  padding: AppStyle.edgeInsetsA4.copyWith(left: 12, right: 12),
+                  child: Text.rich(
+                    TextSpan(
+                      text: "${message.userName}：",
+                      style: TextStyle(
+                        color: Colors.grey,
+                        fontSize: textSize,
                       ),
+                      children: [
+                        TextSpan(
+                          text: message.message,
+                          style: TextStyle(
+                            color: Get.isDarkMode
+                                ? Colors.white
+                                : AppColors.black333,
+                          ),
+                        )
+                      ],
                     ),
                   ),
                 ),
-              ],
-            )
-          : Text.rich(
-              TextSpan(
-                text: "${message.userName}：",
-                style: TextStyle(
-                  color: Colors.grey,
-                  fontSize: AppSettingsController.instance.chatTextSize.value,
-                ),
-                children: [
-                  TextSpan(
-                    text: message.message,
-                    style: TextStyle(
-                      color: Get.isDarkMode ? Colors.white : AppColors.black333,
-                    ),
-                  )
-                ],
               ),
+            ],
+          )
+        : Text.rich(
+            TextSpan(
+              text: "${message.userName}：",
+              style: TextStyle(
+                color: Colors.grey,
+                fontSize: textSize,
+              ),
+              children: [
+                TextSpan(
+                  text: message.message,
+                  style: TextStyle(
+                    color: Get.isDarkMode ? Colors.white : AppColors.black333,
+                  ),
+                )
+              ],
             ),
-    );
+          );
   }
 
   Widget buildSuperChats() {

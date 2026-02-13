@@ -29,6 +29,12 @@ import 'package:url_launcher/url_launcher_string.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 class LiveRoomController extends PlayerController with WidgetsBindingObserver {
+  static const int _trimKeepAutoScroll = 240;
+  static const int _trimTriggerAutoScroll = 320;
+  static const int _trimKeepManualScroll = 800;
+  static const int _trimTriggerManualScroll = 1000;
+  static const Duration _chatFlushInterval = Duration(milliseconds: 120);
+
   final Site pSite;
   final String pRoomId;
   late LiveDanmaku liveDanmaku;
@@ -61,6 +67,11 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
 
   /// 聊天信息
   RxList<LiveMessage> messages = RxList<LiveMessage>();
+  final List<LiveMessage> _pendingMessages = <LiveMessage>[];
+  final List<DanmakuContentItem> _pendingDanmaku = <DanmakuContentItem>[];
+  final List<Pattern> _shieldPatterns = <Pattern>[];
+  Timer? _chatFlushTimer;
+  Worker? _shieldPatternWorker;
 
   /// 清晰度数据
   RxList<LivePlayQuality> qualites = RxList<LivePlayQuality>();
@@ -116,6 +127,7 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     initAutoExit();
     showDanmakuState.value = AppSettingsController.instance.danmuEnable.value;
     followed.value = DBService.instance.getFollowExist("${site.id}_$roomId");
+    _initShieldPatterns();
     loadData();
 
     scrollController.addListener(scrollListener);
@@ -128,6 +140,115 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
         ScrollDirection.forward) {
       disableAutoScroll.value = true;
     }
+  }
+
+  void _initShieldPatterns() {
+    _rebuildShieldPatterns();
+    _shieldPatternWorker?.dispose();
+    _shieldPatternWorker = ever(
+      AppSettingsController.instance.shieldList,
+      (_) => _rebuildShieldPatterns(),
+    );
+  }
+
+  void _rebuildShieldPatterns() {
+    _shieldPatterns.clear();
+    for (var keyword in AppSettingsController.instance.shieldList) {
+      if (Utils.isRegexFormat(keyword)) {
+        final removedSlash = Utils.removeRegexFormat(keyword);
+        try {
+          _shieldPatterns.add(RegExp(removedSlash));
+        } catch (e) {
+          Log.d("关键词：$keyword 正则格式错误");
+        }
+      } else {
+        _shieldPatterns.add(keyword);
+      }
+    }
+  }
+
+  bool _containsBlockedKeyword(String message) {
+    for (var pattern in _shieldPatterns) {
+      if (message.contains(pattern)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  void _scheduleChatFlush() {
+    if (_chatFlushTimer != null) {
+      return;
+    }
+    _chatFlushTimer = Timer(_chatFlushInterval, _flushPendingMessages);
+  }
+
+  void _flushPendingMessages() {
+    _chatFlushTimer?.cancel();
+    _chatFlushTimer = null;
+
+    if (_pendingMessages.isNotEmpty) {
+      messages.addAll(_pendingMessages);
+      _pendingMessages.clear();
+      _trimMessagesIfNeeded();
+
+      if (!disableAutoScroll.value) {
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => chatScrollToBottom(),
+        );
+      }
+    }
+
+    if (_pendingDanmaku.isNotEmpty) {
+      addDanmaku(List<DanmakuContentItem>.from(_pendingDanmaku));
+      _pendingDanmaku.clear();
+    }
+  }
+
+  void _trimMessagesIfNeeded() {
+    if (disableAutoScroll.value) {
+      if (messages.length > _trimTriggerManualScroll) {
+        messages.removeRange(0, messages.length - _trimKeepManualScroll);
+      }
+    } else if (messages.length > _trimTriggerAutoScroll) {
+      messages.removeRange(0, messages.length - _trimKeepAutoScroll);
+    }
+  }
+
+  void _clearPendingMessages() {
+    _chatFlushTimer?.cancel();
+    _chatFlushTimer = null;
+    _pendingMessages.clear();
+    _pendingDanmaku.clear();
+  }
+
+  int _streamTypePriority(String url, bool preferHls) {
+    final lower = url.toLowerCase();
+    final isFlv = lower.contains('.flv');
+    final isHls = lower.contains('.m3u8');
+
+    if (preferHls) {
+      if (isHls) return 0;
+      if (isFlv) return 1;
+    } else {
+      if (isFlv) return 0;
+      if (isHls) return 1;
+    }
+    return 2;
+  }
+
+  List<String> _reorderPlayUrlsByStrategy(List<String> urls) {
+    final preferHls = AppSettingsController.instance.playerLineStrategy.value == 1;
+    final entries = urls.asMap().entries.toList();
+    entries.sort((a, b) {
+      final pa = _streamTypePriority(a.value, preferHls);
+      final pb = _streamTypePriority(b.value, preferHls);
+      if (pa != pb) {
+        return pa - pb;
+      }
+      return a.key - b.key;
+    });
+    return entries.map((entry) => entry.value).toList();
   }
 
   /// 初始化自动关闭倒计时
@@ -178,6 +299,7 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
   void refreshRoom() {
     //messages.clear();
     superChats.clear();
+    _clearPendingMessages();
     liveDanmaku.stop();
 
     loadData();
@@ -204,52 +326,30 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
   /// 接收到WebSocket信息
   void onWSMessage(LiveMessage msg) {
     if (msg.type == LiveMessageType.chat) {
-      if (messages.length > 200 && !disableAutoScroll.value) {
-        messages.removeAt(0);
-      }
-
-      // 关键词屏蔽检查
-      for (var keyword in AppSettingsController.instance.shieldList) {
-        Pattern? pattern;
-        if (Utils.isRegexFormat(keyword)) {
-          String removedSlash = Utils.removeRegexFormat(keyword);
-          try {
-            pattern = RegExp(removedSlash);
-          } catch (e) {
-            // should avoid this during add keyword
-            Log.d("关键词：$keyword 正则格式错误");
-          }
-        } else {
-          pattern = keyword;
-        }
-        if (pattern != null && msg.message.contains(pattern)) {
-          Log.d("关键词：$keyword\n已屏蔽消息内容：${msg.message}");
-          return;
-        }
-      }
-
-      messages.add(msg);
-
-      WidgetsBinding.instance.addPostFrameCallback(
-        (_) => chatScrollToBottom(),
-      );
-      if (!liveStatus.value || isBackground) {
+      if (_containsBlockedKeyword(msg.message)) {
         return;
       }
 
-      addDanmaku([
-        DanmakuContentItem(
-          msg.message,
-          color: Color.fromARGB(
-            255,
-            msg.color.r,
-            msg.color.g,
-            msg.color.b,
+      _pendingMessages.add(msg);
+
+      if (liveStatus.value && !isBackground && showDanmakuState.value) {
+        _pendingDanmaku.add(
+          DanmakuContentItem(
+            msg.message,
+            color: Color.fromARGB(
+              255,
+              msg.color.r,
+              msg.color.g,
+              msg.color.b,
+            ),
           ),
-        ),
-      ]);
+        );
+      }
+      _scheduleChatFlush();
     } else if (msg.type == LiveMessageType.online) {
-      online.value = msg.data;
+      if (online.value != msg.data) {
+        online.value = msg.data;
+      }
     } else if (msg.type == LiveMessageType.superChat) {
       superChats.add(msg.data);
     }
@@ -265,6 +365,7 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
         color: LiveMessageColor.white,
       ),
     );
+    _trimMessagesIfNeeded();
   }
 
   /// 接收到WebSocket关闭信息
@@ -400,7 +501,7 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
       SmartDialog.showToast("无法读取播放地址");
       return;
     }
-    playUrls.value = playUrl.urls;
+    playUrls.value = _reorderPlayUrlsByStrategy(playUrl.urls);
     playHeaders = playUrl.headers;
     currentLineIndex = 0;
     currentLineInfo.value = "线路${currentLineIndex + 1}";
@@ -979,6 +1080,7 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
 
     // 清除全部消息
     liveDanmaku.stop();
+    _clearPendingMessages();
     messages.clear();
     superChats.clear();
     danmakuController?.clear();
@@ -1058,6 +1160,9 @@ ${error?.stackTrace}''');
     autoExitTimer?.cancel();
 
     liveDanmaku.stop();
+    _clearPendingMessages();
+    _shieldPatternWorker?.dispose();
+    _shieldPatternWorker = null;
     danmakuController = null;
     _liveDurationTimer?.cancel(); // 页面关闭时取消定时器
     super.onClose();

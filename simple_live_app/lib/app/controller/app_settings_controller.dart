@@ -80,6 +80,9 @@ class AppSettingsController extends GetxController {
     playerForceHttps.value = LocalStorageService.instance
         .getValue(LocalStorageService.kPlayerForceHttps, false);
 
+    playerLineStrategy.value = LocalStorageService.instance
+        .getValue(LocalStorageService.kPlayerLineStrategy, 0);
+
     autoFullScreen.value = LocalStorageService.instance
         .getValue(LocalStorageService.kAutoFullScreen, false);
 
@@ -530,5 +533,12 @@ class AppSettingsController extends GetxController {
     playerForceHttps.value = e;
     LocalStorageService.instance
         .setValue(LocalStorageService.kPlayerForceHttps, e);
+  }
+
+  var playerLineStrategy = 0.obs;
+  void setPlayerLineStrategy(int e) {
+    playerLineStrategy.value = e;
+    LocalStorageService.instance
+        .setValue(LocalStorageService.kPlayerLineStrategy, e);
   }
 }

@@ -40,13 +40,12 @@ class FollowService extends GetxService {
   /// 当前tag的用户列表
   RxList<FollowUser> curTagFollowList = RxList<FollowUser>();
 
-  /// 已经更新状态的数量
-  var updatedCount = 0;
-
   /// 是否正在更新
   var updating = false.obs;
 
   Timer? updateTimer;
+  bool _statusUpdateLoopRunning = false;
+  bool _pendingStatusUpdate = false;
 
   @override
   void onInit() {
@@ -140,15 +139,30 @@ class FollowService extends GetxService {
   Future<void> loadData({bool updateStatus = true}) async {
     var list = DBService.instance.getFollowList();
     getAllTagList();
+    followList.assignAll(list);
     if (list.isEmpty) {
-      updating.value = false;
-      followList.assignAll(list);
+      _pendingStatusUpdate = false;
+      if (!_statusUpdateLoopRunning) {
+        updating.value = false;
+      }
+      liveList.clear();
+      notLiveList.clear();
+      _updatedListController.add(0);
       return;
     }
-    followList.assignAll(list);
-    if (updateStatus) {
-      startUpdateStatus();
+
+    // 仅同步本地数据时，直接刷新展示列表，不发起网络请求。
+    if (!updateStatus) {
+      filterData();
+      // 避免更新进行中时列表变化导致结果不一致，补一次增量更新。
+      if (_statusUpdateLoopRunning) {
+        _pendingStatusUpdate = true;
+      }
+      return;
     }
+
+    _pendingStatusUpdate = true;
+    unawaited(_runStatusUpdateLoop());
   }
 
   /// 获取最优并发数
@@ -189,22 +203,50 @@ class FollowService extends GetxService {
     return result;
   }
 
-  void startUpdateStatus() async {
-    updatedCount = 0;
+  Future<void> _runStatusUpdateLoop() async {
+    if (_statusUpdateLoopRunning) {
+      return;
+    }
+    _statusUpdateLoopRunning = true;
     updating.value = true;
+    try {
+      while (_pendingStatusUpdate) {
+        _pendingStatusUpdate = false;
+        var currentList = List<FollowUser>.from(followList);
+        if (currentList.isEmpty) {
+          liveList.clear();
+          notLiveList.clear();
+          _updatedListController.add(0);
+          continue;
+        }
+        await _startSingleStatusUpdate(currentList);
+        filterData();
+      }
+    } finally {
+      updating.value = false;
+      _statusUpdateLoopRunning = false;
+    }
+  }
 
+  Future<void> _startSingleStatusUpdate(List<FollowUser> currentList) async {
     var concurrency = getOptimalConcurrency();
+    if (concurrency > currentList.length) {
+      concurrency = currentList.length;
+    }
+    if (concurrency < 1) {
+      concurrency = 1;
+    }
 
-    Log.logPrint("开始更新关注状态，并发数: $concurrency，总数: ${followList.length}");
+    Log.logPrint("开始更新关注状态，并发数: $concurrency，总数: ${currentList.length}");
 
     // 按平台交错排列，避免单一平台阻塞
-    var interleavedList = interleaveByPlatform(followList);
+    var interleavedList = interleaveByPlatform(currentList);
 
     // 创建任务队列
     var taskQueue = Queue<FollowUser>.from(interleavedList);
 
     // 工作函数 - 持续从队列中取任务执行
-    Future<void> worker(int workerId) async {
+    Future<void> worker() async {
       while (taskQueue.isNotEmpty) {
         var item = taskQueue.removeFirst();
         await updateLiveStatus(item);
@@ -214,7 +256,7 @@ class FollowService extends GetxService {
     // 启动固定数量的并发 worker
     var workers = <Future>[];
     for (var i = 0; i < concurrency; i++) {
-      workers.add(worker(i));
+      workers.add(worker());
     }
 
     await Future.wait(workers);
@@ -228,24 +270,26 @@ class FollowService extends GetxService {
       // 先只查状态
       var isLiving = await site.liveSite.getLiveStatus(roomId: item.roomId);
       item.liveStatus.value = isLiving ? 2 : 1;
-      if (item.liveStatus.value == 2) {
-        // 只有正在直播时才查详细信息
-        var detail = await site.liveSite.getRoomDetail(roomId: item.roomId);
-        item.liveStartTime = detail.showTime;
-      } else {
-        item.liveStartTime = null;
+      item.liveStartTime = null;
+
+      // 仅在需要显示开播时间的平台请求详情，避免重复/无效请求拖慢刷新。
+      if (isLiving && _shouldLoadLiveDetail(item.siteId)) {
+        try {
+          var detail = await site.liveSite.getRoomDetail(roomId: item.roomId);
+          item.liveStartTime = detail.showTime;
+        } catch (e) {
+          Log.logPrint(e);
+        }
       }
     } catch (e) {
       Log.logPrint(e);
       item.liveStatus.value = 0;
       item.liveStartTime = null;
-    } finally {
-      updatedCount++;
-      if (updatedCount >= followList.length) {
-        filterData();
-        updating.value = false;
-      }
     }
+  }
+
+  bool _shouldLoadLiveDetail(String siteId) {
+    return siteId == Constant.kBiliBili || siteId == Constant.kDouyu;
   }
 
   void filterData() {

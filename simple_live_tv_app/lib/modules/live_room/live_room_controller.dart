@@ -62,6 +62,9 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
 
   var datetime = "00:00".obs;
 
+  final List<Pattern> _shieldPatterns = <Pattern>[];
+  Worker? _shieldPatternWorker;
+
   void initTimer() {
     Timer.periodic(const Duration(seconds: 1), (timer) {
       var now = DateTime.now();
@@ -81,10 +84,45 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     initTimer();
     showDanmakuState.value = AppSettingsController.instance.danmuEnable.value;
     followed.value = DBService.instance.getFollowExist("${site.id}_$roomId");
+    _initShieldPatterns();
 
     loadData();
 
     super.onInit();
+  }
+
+  void _initShieldPatterns() {
+    _rebuildShieldPatterns();
+    _shieldPatternWorker?.dispose();
+    _shieldPatternWorker = ever(
+      AppSettingsController.instance.shieldList,
+      (_) => _rebuildShieldPatterns(),
+    );
+  }
+
+  void _rebuildShieldPatterns() {
+    _shieldPatterns.clear();
+    for (var keyword in AppSettingsController.instance.shieldList) {
+      if (Utils.isRegexFormat(keyword)) {
+        final removedSlash = Utils.removeRegexFormat(keyword);
+        try {
+          _shieldPatterns.add(RegExp(removedSlash));
+        } catch (e) {
+          Log.d("关键词：$keyword 正则格式错误");
+        }
+      } else {
+        _shieldPatterns.add(keyword);
+      }
+    }
+  }
+
+  bool _containsBlockedKeyword(String message) {
+    for (var pattern in _shieldPatterns) {
+      if (message.contains(pattern)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   void refreshRoom() {
@@ -103,24 +141,8 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
   /// 接收到WebSocket信息
   void onWSMessage(LiveMessage msg) {
     if (msg.type == LiveMessageType.chat) {
-      // 关键词屏蔽检查
-      for (var keyword in AppSettingsController.instance.shieldList) {
-        Pattern? pattern;
-        if (Utils.isRegexFormat(keyword)) {
-          String removedSlash = Utils.removeRegexFormat(keyword);
-          try {
-            pattern = RegExp(removedSlash);
-          } catch (e) {
-            // should avoid this during add keyword
-            Log.d("关键词：$keyword 正则格式错误");
-          }
-        } else {
-          pattern = keyword;
-        }
-        if (pattern != null && msg.message.contains(pattern)) {
-          Log.d("关键词：$keyword\n已屏蔽消息内容：${msg.message}");
-          return;
-        }
+      if (_containsBlockedKeyword(msg.message)) {
+        return;
       }
 
       if (!liveStatus.value || isBackground) {
@@ -440,6 +462,8 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
   @override
   void onClose() {
     liveDanmaku.stop();
+    _shieldPatternWorker?.dispose();
+    _shieldPatternWorker = null;
 
     danmakuController = null;
     super.onClose();

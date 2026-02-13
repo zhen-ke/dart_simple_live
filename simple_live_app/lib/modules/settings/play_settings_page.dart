@@ -197,6 +197,20 @@ class PlaySettingsPage extends GetView<AppSettingsController> {
                     },
                   ),
                 ),
+                AppStyle.divider,
+                Obx(
+                  () => SettingsMenu<int>(
+                    title: "线路策略",
+                    value: controller.playerLineStrategy.value,
+                    valueMap: const {
+                      0: "低延迟优先(FLV)",
+                      1: "稳定优先(HLS)",
+                    },
+                    onChanged: (e) {
+                      controller.setPlayerLineStrategy(e);
+                    },
+                  ),
+                ),
               ],
             ),
           ),
