@@ -90,7 +90,7 @@ class LiveRoomPage extends GetView<LiveRoomController> {
           return PopScope(
             canPop: false,
             onPopInvokedWithResult: (e, r) {
-              controller.exitFull();
+              controller.exitCurrentFullScreenMode();
             },
             child: Scaffold(
               body: buildMediaPlayer(),

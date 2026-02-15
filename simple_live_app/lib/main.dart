@@ -222,18 +222,11 @@ class MyApp extends StatelessWidget {
               if (Platform.isAndroid || Platform.isIOS) {
                 return false;
               }
-              if (Get.isRegistered<LiveRoomController>()) {
-                final controller = Get.find<LiveRoomController>();
-                if (controller.fullScreenState.value) {
-                  controller.exitFull();
-                  return true;
-                }
+              if (!Get.isRegistered<LiveRoomController>()) {
+                return false;
               }
-              if (await windowManager.isFullScreen()) {
-                await windowManager.setFullScreen(false);
-                return true;
-              }
-              return false;
+              final controller = Get.find<LiveRoomController>();
+              return controller.exitCurrentFullScreenMode();
             }
 
             // Fix for HyperOS windowed-mode Flutter bug:

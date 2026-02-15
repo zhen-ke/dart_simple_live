@@ -144,11 +144,7 @@ Widget buildFullControls(
                 children: [
                   IconButton(
                     onPressed: () {
-                      if (controller.smallWindowState.value) {
-                        controller.exitSmallWindow();
-                      } else {
-                        controller.exitFull();
-                      }
+                      controller.exitCurrentFullScreenMode();
                     },
                     icon: const Icon(
                       Icons.arrow_back,
@@ -334,11 +330,7 @@ Widget buildFullControls(
                   ),
                   IconButton(
                     onPressed: () {
-                      if (controller.smallWindowState.value) {
-                        controller.exitSmallWindow();
-                      } else {
-                        controller.exitFull();
-                      }
+                      controller.exitCurrentFullScreenMode();
                     },
                     icon: const Icon(
                       Remix.fullscreen_exit_fill,

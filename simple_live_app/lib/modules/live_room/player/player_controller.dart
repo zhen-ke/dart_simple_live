@@ -234,6 +234,7 @@ mixin PlayerSystemMixin on PlayerMixin, PlayerStateMixin, PlayerDanmakuMixin {
   bool? _pendingDesktopFullScreenState;
   DateTime? _desktopLastToggleAt;
   bool? _desktopLastToggleTarget;
+  DateTime? _desktopLastExitModeRequestAt;
 
   //final VolumeController volumeController = VolumeController();
 
@@ -338,6 +339,7 @@ mixin PlayerSystemMixin on PlayerMixin, PlayerStateMixin, PlayerDanmakuMixin {
     _pendingDesktopFullScreenState = null;
     _desktopLastToggleAt = null;
     _desktopLastToggleTarget = null;
+    _desktopLastExitModeRequestAt = null;
     //pip.dispose();
     await SystemChrome.setEnabledSystemUIMode(
       SystemUiMode.edgeToEdge,
@@ -385,6 +387,35 @@ mixin PlayerSystemMixin on PlayerMixin, PlayerStateMixin, PlayerDanmakuMixin {
     }
 
     //danmakuController?.clear();
+  }
+
+  /// 退出当前显示模式（优先退出小窗，其次退出全屏）
+  bool exitCurrentFullScreenMode() {
+    if (_isDesktopPlatform) {
+      final now = DateTime.now();
+      final last = _desktopLastExitModeRequestAt;
+      _desktopLastExitModeRequestAt = now;
+      if (last != null &&
+          now.difference(last) < const Duration(milliseconds: 300)) {
+        // 高频重复触发（如快速连按 ESC）时，保持当前过渡流程，避免重复切换窗口状态。
+        return smallWindowState.value ||
+            fullScreenState.value ||
+            _desktopFullScreenTransitioning;
+      }
+    }
+
+    if (smallWindowState.value) {
+      exitSmallWindow();
+      return true;
+    }
+    if (fullScreenState.value) {
+      exitFull();
+      return true;
+    }
+    if (_isDesktopPlatform && _desktopFullScreenTransitioning) {
+      return true;
+    }
+    return false;
   }
 
   Size? _lastWindowSize;
