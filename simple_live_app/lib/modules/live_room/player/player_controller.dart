@@ -310,6 +310,15 @@ mixin PlayerSystemMixin on PlayerMixin, PlayerStateMixin, PlayerDanmakuMixin {
     }
   }
 
+  void _syncDesktopFullScreenState() async {
+    if (!_isDesktopPlatform) return;
+    try {
+      fullScreenState.value = await windowManager.isFullScreen();
+    } catch (e) {
+      Log.logPrint(e);
+    }
+  }
+
   /// 初始化一些系统状态
   void initSystem() async {
     SystemControlService.instance.setShowSystemVolumeUI(false);
