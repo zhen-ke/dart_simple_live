@@ -224,14 +224,29 @@ mixin PlayerDanmakuMixin on PlayerStateMixin {
     }
   }
 }
+class _PlayerWindowListener extends WindowListener {
+  final PlayerSystemMixin mixin;
+  _PlayerWindowListener(this.mixin);
+
+  @override
+  void onWindowEnterFullScreen() {
+    mixin.fullScreenState.value = true;
+  }
+
+  @override
+  void onWindowLeaveFullScreen() {
+    mixin.fullScreenState.value = false;
+  }
+}
+
 mixin PlayerSystemMixin on PlayerMixin, PlayerStateMixin, PlayerDanmakuMixin {
   final DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
 
   final pip = Floating();
   StreamSubscription<PiPStatus>? _pipSubscription;
-  Timer? _desktopFullScreenSyncTimer;
+  _PlayerWindowListener? _windowListener;
+
   bool _desktopFullScreenTransitioning = false;
-  bool _desktopSyncRunning = false;
   bool? _pendingDesktopFullScreenState;
   DateTime? _desktopLastToggleAt;
   bool? _desktopLastToggleTarget;
@@ -242,31 +257,10 @@ mixin PlayerSystemMixin on PlayerMixin, PlayerStateMixin, PlayerDanmakuMixin {
   bool get _isDesktopPlatform => !(Platform.isAndroid || Platform.isIOS);
 
   void _startDesktopFullScreenSync() {
-    if (!_isDesktopPlatform) {
-      return;
-    }
-    _desktopFullScreenSyncTimer?.cancel();
-    _desktopFullScreenSyncTimer = Timer.periodic(
-      const Duration(milliseconds: 800),
-      (_) => _syncDesktopFullScreenState(),
-    );
-    _syncDesktopFullScreenState();
-  }
-
-  Future<void> _syncDesktopFullScreenState() async {
-    if (!_isDesktopPlatform || _desktopSyncRunning || smallWindowState.value) {
-      return;
-    }
-    _desktopSyncRunning = true;
-    try {
-      final isFullScreen = await windowManager.isFullScreen();
-      if (fullScreenState.value != isFullScreen) {
-        fullScreenState.value = isFullScreen;
-      }
-    } catch (e) {
-      Log.logPrint(e);
-    } finally {
-      _desktopSyncRunning = false;
+    if (!_isDesktopPlatform) return;
+    if (_windowListener == null) {
+      _windowListener = _PlayerWindowListener(this);
+      windowManager.addListener(_windowListener!);
     }
   }
 
@@ -314,9 +308,7 @@ mixin PlayerSystemMixin on PlayerMixin, PlayerStateMixin, PlayerDanmakuMixin {
 
   /// 初始化一些系统状态
   void initSystem() async {
-    if (Platform.isAndroid || Platform.isIOS) {
-      VolumeController.instance.showSystemUI = false;
-    }
+    SystemControlService.instance.setShowSystemVolumeUI(false);
 
     // 屏幕常亮
     //WakelockPlus.enable();
@@ -334,8 +326,12 @@ mixin PlayerSystemMixin on PlayerMixin, PlayerStateMixin, PlayerDanmakuMixin {
   /// 释放一些系统状态
   Future resetSystem() async {
     _pipSubscription?.cancel();
-    _desktopFullScreenSyncTimer?.cancel();
-    _desktopFullScreenSyncTimer = null;
+
+    if (_windowListener != null) {
+      windowManager.removeListener(_windowListener!);
+      _windowListener = null;
+    }
+
     _desktopFullScreenTransitioning = false;
     _pendingDesktopFullScreenState = null;
     _desktopLastToggleAt = null;
@@ -348,14 +344,7 @@ mixin PlayerSystemMixin on PlayerMixin, PlayerStateMixin, PlayerDanmakuMixin {
     );
 
     await setPortraitOrientation();
-    if (Platform.isAndroid || Platform.isIOS || Platform.isMacOS) {
-      // 亮度重置,桌面平台可能会报错,暂时不处理桌面平台的亮度
-      try {
-        await ScreenBrightness.instance.resetApplicationScreenBrightness();
-      } catch (e) {
-        Log.logPrint(e);
-      }
-    }
+    await SystemControlService.instance.resetBrightness();
 
     await WakelockPlus.disable();
   }
@@ -428,38 +417,19 @@ mixin PlayerSystemMixin on PlayerMixin, PlayerStateMixin, PlayerDanmakuMixin {
       fullScreenState.value = true;
       smallWindowState.value = true;
 
-      // 读取窗口大小
-      _lastWindowSize = await windowManager.getSize();
-      _lastWindowPosition = await windowManager.getPosition();
-
-      windowManager.setTitleBarStyle(TitleBarStyle.hidden);
-      // 获取视频窗口大小
-      var width = player.state.width ?? 16;
-      var height = player.state.height ?? 9;
-
-      // 横屏还是竖屏
-      if (height > width) {
-        var aspectRatio = width / height;
-        windowManager.setSize(Size(400, 400 / aspectRatio));
-      } else {
-        var aspectRatio = height / width;
-        windowManager.setSize(Size(280 / aspectRatio, 280));
-      }
-
-      windowManager.setAlwaysOnTop(true);
+      await SystemControlService.instance.enterDesktopSmallWindow(
+        videoWidth: player.state.width?.toDouble() ?? 16,
+        videoHeight: player.state.height?.toDouble() ?? 9,
+      );
     }
   }
 
   ///退出小窗模式()
-  void exitSmallWindow() {
+  void exitSmallWindow() async {
     if (!(Platform.isAndroid || Platform.isIOS)) {
       fullScreenState.value = false;
       smallWindowState.value = false;
-      windowManager.setTitleBarStyle(TitleBarStyle.normal);
-      windowManager.setSize(_lastWindowSize!);
-      windowManager.setPosition(_lastWindowPosition!);
-      windowManager.setAlwaysOnTop(false);
-      //windowManager.setAlignment(Alignment.center);
+      await SystemControlService.instance.exitDesktopSmallWindow();
     }
   }
 
@@ -661,14 +631,13 @@ mixin PlayerGestureControlMixin
     throttle = DelayedThrottle(200);
 
     verticalDragging = true;
-    if (Platform.isAndroid || Platform.isIOS || Platform.isMacOS) {
+    _currentVolume = await SystemControlService.instance.getVolume();
+    _currentBrightness = await SystemControlService.instance.getBrightness();
+
+    // 只有在支持亮度的平台上才显示左侧亮度的调整 UI
+    // 右侧音量则直接显示 UI
+    if (!leftVerticalDrag || SystemControlService.instance.supportBrightnessControl) {
       showGestureTip.value = true;
-    }
-    if (Platform.isAndroid || Platform.isIOS) {
-      _currentVolume = await VolumeController.instance.getVolume();
-    }
-    if (Platform.isAndroid || Platform.isIOS || Platform.isMacOS) {
-      _currentBrightness = await ScreenBrightness.instance.application;
     }
   }
 
@@ -678,16 +647,13 @@ mixin PlayerGestureControlMixin
       return;
     }
     if (verticalDragging == false) return;
-    if (!Platform.isAndroid && !Platform.isIOS) {
-      return;
-    }
-    //String text = "";
-    //double value = 0.0;
 
     Log.logPrint("$verStartPosition/${e.globalPosition.dy}");
 
     if (leftVerticalDrag) {
-      setGestureBrightness(e.globalPosition.dy);
+      if (SystemControlService.instance.supportBrightnessControl) {
+        setGestureBrightness(e.globalPosition.dy);
+      }
     } else {
       setGestureVolume(e.globalPosition.dy);
     }
@@ -729,7 +695,7 @@ mixin PlayerGestureControlMixin
 
   Future _realSetVolume(int volume) async {
     Log.logPrint(volume);
-    VolumeController.instance.setVolume(volume / 100);
+    await SystemControlService.instance.setVolume(volume / 100);
   }
 
   void setGestureBrightness(double dy) {
@@ -741,7 +707,7 @@ mixin PlayerGestureControlMixin
       if (seek < 0) {
         seek = 0;
       }
-      ScreenBrightness.instance.setApplicationScreenBrightness(seek);
+      SystemControlService.instance.setBrightness(seek);
 
       gestureTipText.value = "亮度 ${(seek * 100).toInt()}%";
       Log.logPrint(value);
@@ -752,7 +718,7 @@ mixin PlayerGestureControlMixin
         seek = 1;
       }
 
-      ScreenBrightness.instance.setApplicationScreenBrightness(seek);
+      SystemControlService.instance.setBrightness(seek);
       gestureTipText.value = "亮度 ${(seek * 100).toInt()}%";
       Log.logPrint(value);
     }
