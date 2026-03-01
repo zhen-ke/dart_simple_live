@@ -40,6 +40,11 @@ import 'package:dynamic_color/dynamic_color.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // 限制图片缓存数量与内存占用（最多缓存200张或50MB），缓解因大量主播头像等引发的高内存问题
+  PaintingBinding.instance.imageCache.maximumSize = 200;
+  PaintingBinding.instance.imageCache.maximumSizeBytes = 50 * 1024 * 1024;
+
   await migrateData();
   await initWindow();
   MediaKit.ensureInitialized();

@@ -500,10 +500,12 @@ class LiveRoomPage extends GetView<LiveRoomController> {
                           itemCount: controller.messages.length,
                           itemBuilder: (_, i) {
                             var item = controller.messages[i];
-                            return buildMessageItem(
-                              item,
-                              textSize: textSize,
-                              bubbleStyle: bubbleStyle,
+                            return RepaintBoundary(
+                              child: buildMessageItem(
+                                item,
+                                textSize: textSize,
+                                bubbleStyle: bubbleStyle,
+                              ),
                             );
                           },
                         ),

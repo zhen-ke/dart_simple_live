@@ -70,6 +70,9 @@ mixin PlayerMixin {
                 hwdec: 'mediacodec',
               )
             : VideoControllerConfiguration(
+                hwdec: AppSettingsController.instance.hardwareDecode.value
+                    ? (Platform.isMacOS ? 'videotoolbox' : 'auto')
+                    : 'no',
                 enableHardwareAcceleration:
                     AppSettingsController.instance.hardwareDecode.value,
                 androidAttachSurfaceAfterVideoParameters: false,
