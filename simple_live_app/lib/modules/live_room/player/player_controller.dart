@@ -792,9 +792,21 @@ class PlayerController extends BaseController
   StreamSubscription? _logSubscription;
   StreamSubscription? _playingSubscription;
 
+  bool get _shouldLogPlayerEvents =>
+      !kReleaseMode || AppSettingsController.instance.logEnable.value;
+
+  void _updateVerticalByPlayerSize() {
+    final vertical = (player.state.height ?? 9) > (player.state.width ?? 16);
+    if (isVertical.value != vertical) {
+      isVertical.value = vertical;
+    }
+  }
+
   void initStream() {
     _errorSubscription = player.stream.error.listen((event) {
-      Log.d("播放器错误：$event");
+      if (_shouldLogPlayerEvents) {
+        Log.d("播放器错误：$event");
+      }
       // 跳过无音频输出的错误
       // Could not open/initialize audio device -> no sound.
       if (event.contains('no sound.')) {
@@ -807,7 +819,9 @@ class PlayerController extends BaseController
     _playingSubscription = player.stream.playing.listen((event) {
       if (event) {
         WakelockPlus.enable();
-        Log.d("Playing");
+        if (_shouldLogPlayerEvents) {
+          Log.d("Playing");
+        }
       }
     });
 
@@ -816,20 +830,24 @@ class PlayerController extends BaseController
         mediaEnd();
       }
     });
-    _logSubscription = player.stream.log.listen((event) {
-      Log.d("播放器日志：$event");
-    });
+    if (_shouldLogPlayerEvents) {
+      _logSubscription = player.stream.log.listen((event) {
+        Log.d("播放器日志：$event");
+      });
+    }
     _widthSubscription = player.stream.width.listen((event) {
-      Log.d(
-          'width:$event  W:${(player.state.width)}  H:${(player.state.height)}');
-      isVertical.value =
-          (player.state.height ?? 9) > (player.state.width ?? 16);
+      if (_shouldLogPlayerEvents) {
+        Log.d(
+            'width:$event  W:${(player.state.width)}  H:${(player.state.height)}');
+      }
+      _updateVerticalByPlayerSize();
     });
     _heightSubscription = player.stream.height.listen((event) {
-      Log.d(
-          'height:$event  W:${(player.state.width)}  H:${(player.state.height)}');
-      isVertical.value =
-          (player.state.height ?? 9) > (player.state.width ?? 16);
+      if (_shouldLogPlayerEvents) {
+        Log.d(
+            'height:$event  W:${(player.state.width)}  H:${(player.state.height)}');
+      }
+      _updateVerticalByPlayerSize();
     });
   }
 

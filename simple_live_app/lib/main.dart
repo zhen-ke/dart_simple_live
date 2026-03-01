@@ -218,7 +218,7 @@ class MyApp extends StatelessWidget {
           loadingBuilder: ((msg) => const AppLoaddingWidget()),
           //字体大小不跟随系统变化
           builder: (context, child) {
-            Future<bool> exitDesktopFullscreenWithController() async {
+            bool exitDesktopFullscreenWithController() {
               if (Platform.isAndroid || Platform.isIOS) {
                 return false;
               }
@@ -259,9 +259,9 @@ class MyApp extends StatelessWidget {
                             FourthButtonTapGestureRecognizer>(
                       () => FourthButtonTapGestureRecognizer(),
                       (FourthButtonTapGestureRecognizer instance) {
-                        instance.onTapDown = (TapDownDetails details) async {
+                        instance.onTapDown = (TapDownDetails details) {
                           //如果处于全屏状态，退出全屏
-                          if (await exitDesktopFullscreenWithController()) {
+                          if (exitDesktopFullscreenWithController()) {
                             return;
                           }
                           Get.back();
@@ -269,17 +269,16 @@ class MyApp extends StatelessWidget {
                       },
                     ),
                   },
-                  child: KeyboardListener(
-                    focusNode: FocusNode(),
+                  child: Focus(
                     autofocus: true,
-                    onKeyEvent: (KeyEvent event) async {
+                    onKeyEvent: (node, event) {
                       if (event is KeyDownEvent &&
                           event.logicalKey == LogicalKeyboardKey.escape) {
-                        // ESC退出全屏
-                        if (await exitDesktopFullscreenWithController()) {
-                          return;
+                        if (exitDesktopFullscreenWithController()) {
+                          return KeyEventResult.handled;
                         }
                       }
+                      return KeyEventResult.ignored;
                     },
                     child: child!,
                   ),
