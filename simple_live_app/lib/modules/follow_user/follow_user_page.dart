@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:remixicon/remixicon.dart';
@@ -18,7 +19,10 @@ class FollowUserPage extends GetView<FollowUserController> {
 
   @override
   Widget build(BuildContext context) {
-    var count = MediaQuery.of(context).size.width ~/ 500;
+    bool isDesktop = !Platform.isAndroid && !Platform.isIOS;
+    var count = isDesktop
+        ? MediaQuery.of(context).size.width ~/ 260
+        : MediaQuery.of(context).size.width ~/ 500;
     if (count < 1) count = 1;
     return Scaffold(
       appBar: AppBar(
@@ -149,7 +153,9 @@ class FollowUserPage extends GetView<FollowUserController> {
           ),
           Expanded(
             child: PageGridView(
-              crossAxisSpacing: 12,
+              crossAxisSpacing: isDesktop ? 16 : 12,
+              mainAxisSpacing: isDesktop ? 16 : 12,
+              padding: isDesktop ? const EdgeInsets.all(16) : null,
               crossAxisCount: count,
               pageController: controller,
               firstRefresh: true,
@@ -159,6 +165,7 @@ class FollowUserPage extends GetView<FollowUserController> {
                 var site = Sites.allSites[item.siteId]!;
                 return FollowUserItem(
                   item: item,
+                  cardMode: isDesktop,
                   onRemove: () {
                     controller.removeItem(item);
                   },

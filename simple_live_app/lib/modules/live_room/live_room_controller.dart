@@ -66,7 +66,7 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
   final ScrollController scrollController = ScrollController();
 
   /// 聊天信息
-  RxList<LiveMessage> messages = RxList<LiveMessage>();
+  List<LiveMessage> messages = <LiveMessage>[];
   final List<LiveMessage> _pendingMessages = <LiveMessage>[];
   final List<DanmakuContentItem> _pendingDanmaku = <DanmakuContentItem>[];
   final List<Pattern> _shieldPatterns = <Pattern>[];
@@ -191,6 +191,8 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
       messages.addAll(_pendingMessages);
       _pendingMessages.clear();
       _trimMessagesIfNeeded();
+
+      update(['chatList']);
 
       if (!disableAutoScroll.value) {
         WidgetsBinding.instance.addPostFrameCallback(

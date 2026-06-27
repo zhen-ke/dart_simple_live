@@ -60,7 +60,7 @@ class PageGridView extends StatelessWidget {
             ),
           ),
           Positioned(
-            bottom: 0,
+            bottom: 16,
             left: 0,
             right: 0,
             child: // 加载更多按钮
@@ -72,9 +72,29 @@ class PageGridView extends StatelessWidget {
                   !pageController.pageLoadding.value &&
                   !pageController.pageEmpty.value,
               child: Center(
-                child: TextButton(
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Theme.of(context).cardColor,
+                    foregroundColor: Theme.of(context).textTheme.bodyLarge?.color,
+                    elevation: 4,
+                    shadowColor: Colors.black.withOpacity(0.2),
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(24),
+                      side: BorderSide(
+                        color: Theme.of(context).dividerColor.withOpacity(0.1),
+                        width: 1,
+                      ),
+                    ),
+                  ),
                   onPressed: pageController.loadData,
-                  child: const Text("加载更多"),
+                  child: const Text(
+                    "加载更多",
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ),
               ),
             ),

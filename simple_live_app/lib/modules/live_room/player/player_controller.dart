@@ -54,6 +54,12 @@ mixin PlayerMixin {
     if(Platform.isAndroid){
       await pp.setProperty('force-seekable', 'yes');
     }
+
+    // 针对桌面端释放内存压力：大幅缩减 mpv 内核对于直播流的网络缓冲容量
+    if (Platform.isMacOS || Platform.isWindows || Platform.isLinux) {
+      await pp.setProperty('demuxer-max-bytes', '32000000'); // 32MB
+      await pp.setProperty('demuxer-max-back-bytes', '16000000'); // 16MB
+    }
   }
 
   /// 视频控制器
@@ -71,7 +77,7 @@ mixin PlayerMixin {
               )
             : VideoControllerConfiguration(
                 hwdec: AppSettingsController.instance.hardwareDecode.value
-                    ? (Platform.isMacOS ? 'videotoolbox' : 'auto')
+                    ? (Platform.isMacOS ? 'videotoolbox-copy' : 'auto')
                     : 'no',
                 enableHardwareAcceleration:
                     AppSettingsController.instance.hardwareDecode.value,

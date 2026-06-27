@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:simple_live_app/app/app_style.dart';
@@ -17,19 +18,40 @@ class IndexedPage extends GetView<IndexedController> {
               Visibility(
                 visible: orientation == Orientation.landscape,
                 child: Obx(
-                  () => NavigationRail(
-                    selectedIndex: controller.index.value,
-                    onDestinationSelected: controller.setIndex,
-                    labelType: NavigationRailLabelType.none,
-                    destinations: controller.items
-                        .map(
-                          (item) => NavigationRailDestination(
-                            icon: Icon(item.iconData),
-                            label: Text(item.title),
-                            padding: AppStyle.edgeInsetsV8,
-                          ),
-                        )
-                        .toList(),
+                  () => Theme(
+                    data: Theme.of(context).copyWith(
+                      navigationRailTheme: NavigationRailThemeData(
+                        backgroundColor: !Platform.isAndroid && !Platform.isIOS
+                            ? (Theme.of(context).brightness == Brightness.light
+                                ? const Color(0xfff5f5f7)
+                                : const Color(0xff1e1e1f))
+                            : null,
+                        indicatorColor: Theme.of(context)
+                            .colorScheme
+                            .primary
+                            .withOpacity(0.12),
+                        selectedIconTheme: IconThemeData(
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                        unselectedIconTheme: const IconThemeData(
+                          color: Colors.grey,
+                        ),
+                      ),
+                    ),
+                    child: NavigationRail(
+                      selectedIndex: controller.index.value,
+                      onDestinationSelected: controller.setIndex,
+                      labelType: NavigationRailLabelType.none,
+                      destinations: controller.items
+                          .map(
+                            (item) => NavigationRailDestination(
+                              icon: Icon(item.iconData),
+                              label: Text(item.title),
+                              padding: AppStyle.edgeInsetsV12,
+                            ),
+                          )
+                          .toList(),
+                    ),
                   ),
                 ),
               ),

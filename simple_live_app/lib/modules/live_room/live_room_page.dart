@@ -177,7 +177,7 @@ class LiveRoomPage extends GetView<LiveRoomController> {
             ],
           ),
         ),
-        if (!controller.fullScreenState.value)
+        if (!controller.fullScreenState.value && (Platform.isAndroid || Platform.isIOS))
           Container(
             decoration: BoxDecoration(
               color: Theme.of(context).cardColor,
@@ -364,23 +364,127 @@ class LiveRoomPage extends GetView<LiveRoomController> {
               ),
             ),
             AppStyle.hGap12,
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(
-                  Remix.fire_fill,
-                  size: 20,
-                  color: Colors.orange,
-                ),
-                AppStyle.hGap4,
-                Text(
-                  Utils.onlineToString(
-                    controller.detail.value?.online ?? 0,
+            if (Platform.isAndroid || Platform.isIOS)
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Remix.fire_fill,
+                    size: 20,
+                    color: Colors.orange,
                   ),
-                  style: const TextStyle(fontSize: 14),
-                ),
-              ],
-            ),
+                  AppStyle.hGap4,
+                  Text(
+                    Utils.onlineToString(
+                      controller.detail.value?.online ?? 0,
+                    ),
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                ],
+              )
+            else
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Remix.fire_fill,
+                        size: 16,
+                        color: Colors.orange,
+                      ),
+                      AppStyle.hGap4,
+                      Text(
+                        Utils.onlineToString(
+                          controller.detail.value?.online ?? 0,
+                        ),
+                        style: const TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                  AppStyle.vGap4,
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        constraints: const BoxConstraints(),
+                        padding: const EdgeInsets.all(4),
+                        onPressed: controller.refreshRoom,
+                        icon: const Icon(Remix.refresh_line, size: 18),
+                        tooltip: "刷新",
+                      ),
+                      AppStyle.hGap8,
+                      IconButton(
+                        constraints: const BoxConstraints(),
+                        padding: const EdgeInsets.all(4),
+                        onPressed: controller.followed.value
+                            ? controller.removeFollowUser
+                            : controller.followUser,
+                        icon: Icon(
+                          controller.followed.value
+                              ? Remix.heart_fill
+                              : Remix.heart_line,
+                          size: 18,
+                          color: controller.followed.value ? Colors.red : null,
+                        ),
+                        tooltip: controller.followed.value ? "取消关注" : "关注",
+                      ),
+                      AppStyle.hGap8,
+                      PopupMenuButton<int>(
+                        constraints: const BoxConstraints(),
+                        padding: const EdgeInsets.all(4),
+                        icon: const Icon(Remix.share_forward_line, size: 18),
+                        tooltip: "分享",
+                        itemBuilder: (context) {
+                          return [
+                            const PopupMenuItem(
+                              value: 0,
+                              child: Row(
+                                children: [
+                                  Icon(Remix.share_circle_line, size: 16),
+                                  SizedBox(width: 8),
+                                  Text("分享直播间", style: TextStyle(fontSize: 12)),
+                                ],
+                              ),
+                            ),
+                            const PopupMenuItem(
+                              value: 1,
+                              child: Row(
+                                children: [
+                                  Icon(Remix.links_line, size: 16),
+                                  SizedBox(width: 8),
+                                  Text("复制网页链接", style: TextStyle(fontSize: 12)),
+                                ],
+                              ),
+                            ),
+                            const PopupMenuItem(
+                              value: 2,
+                              child: Row(
+                                children: [
+                                  Icon(Remix.play_circle_line, size: 16),
+                                  SizedBox(width: 8),
+                                  Text("复制播放直链", style: TextStyle(fontSize: 12)),
+                                ],
+                              ),
+                            ),
+                          ];
+                        },
+                        onSelected: (value) {
+                          if (value == 0) {
+                            controller.share();
+                          } else if (value == 1) {
+                            controller.copyUrl();
+                          } else if (value == 2) {
+                            controller.copyPlayUrl();
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+                ],
+              ),
           ],
         ),
       ),
@@ -490,26 +594,29 @@ class LiveRoomPage extends GetView<LiveRoomController> {
                         AppSettingsController.instance.chatBubbleStyle.value;
                     return Stack(
                       children: [
-                        ListView.separated(
-                          controller: controller.scrollController,
-                          separatorBuilder: (_, i) => SizedBox(
-                            // *2与原来的EdgeInsets.symmetric(vertical: )做兼容
-                            height: textGap * 2,
+                        GetBuilder<LiveRoomController>(
+                          id: 'chatList',
+                          builder: (_) => ListView.separated(
+                            controller: controller.scrollController,
+                            separatorBuilder: (_, i) => SizedBox(
+                              // *2与原来的EdgeInsets.symmetric(vertical: )做兼容
+                              height: textGap * 2,
+                            ),
+                            padding: AppStyle.edgeInsetsA12,
+                            itemCount: controller.messages.length,
+                            itemBuilder: (_, i) {
+                              var item = controller.messages[i];
+                              return RepaintBoundary(
+                                child: buildMessageItem(
+                                  item,
+                                  textSize: textSize,
+                                  bubbleStyle: bubbleStyle,
+                                ),
+                              );
+                            },
                           ),
-                          padding: AppStyle.edgeInsetsA12,
-                          itemCount: controller.messages.length,
-                          itemBuilder: (_, i) {
-                            var item = controller.messages[i];
-                            return RepaintBoundary(
-                              child: buildMessageItem(
-                                item,
-                                textSize: textSize,
-                                bubbleStyle: bubbleStyle,
-                              ),
-                            );
-                          },
                         ),
-                        Visibility(
+                        Obx(() => Visibility(
                           visible: controller.disableAutoScroll.value,
                           child: Positioned(
                             right: 12,
@@ -523,7 +630,7 @@ class LiveRoomPage extends GetView<LiveRoomController> {
                               label: const Text("最新"),
                             ),
                           ),
-                        ),
+                        )),
                       ],
                     );
                   }),
