@@ -254,8 +254,7 @@ class PlayerController extends BaseController
 
   StreamSubscription<String>? _errorSubscription;
   StreamSubscription? _completedSubscription;
-  StreamSubscription? _widthSubscription;
-  StreamSubscription? _heightSubscription;
+  StreamSubscription? _videoParamsSubscription;
   StreamSubscription? _logSubscription;
 
   void initStream() {
@@ -276,27 +275,18 @@ class PlayerController extends BaseController
     _logSubscription = player.stream.log.listen((event) {
       Log.d("播放器日志：$event");
     });
-    _widthSubscription = player.stream.width.listen((event) {
-      Log.w(
-          'width:$event  W:${(player.state.width)}  H:${(player.state.height)}');
-      width.value = event ?? 0;
-      // isVertical.value =
-      //     (player.state.height ?? 9) > (player.state.width ?? 16);
-    });
-    _heightSubscription = player.stream.height.listen((event) {
-      Log.w(
-          'height:$event  W:${(player.state.width)}  H:${(player.state.height)}');
-      height.value = event ?? 0;
-      // isVertical.value =
-      //     (player.state.height ?? 9) > (player.state.width ?? 16);
+    // 合并为单一 videoParams 订阅：width/height 同源，避免重复回调与日志
+    _videoParamsSubscription = player.stream.videoParams.listen((_) {
+      Log.w('videoParams: W:${player.state.width}  H:${player.state.height}');
+      width.value = player.state.width ?? 0;
+      height.value = player.state.height ?? 0;
     });
   }
 
   void disposeStream() {
     _errorSubscription?.cancel();
     _completedSubscription?.cancel();
-    _widthSubscription?.cancel();
-    _heightSubscription?.cancel();
+    _videoParamsSubscription?.cancel();
     _logSubscription?.cancel();
   }
 

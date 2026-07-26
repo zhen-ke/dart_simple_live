@@ -519,22 +519,36 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     setPlayer();
   }
 
+  List<Media> _buildMediaList() {
+    final forceHttps = AppSettingsController.instance.playerForceHttps.value;
+    return playUrls.map((url) {
+      final finalUrl =
+          forceHttps ? url.replaceAll("http://", "https://") : url;
+      return Media(finalUrl, httpHeaders: playHeaders);
+    }).toList();
+  }
+
   void initPlaylist() async {
     currentLineInfo.value = "线路${currentLineIndex + 1}";
     errorMsg.value = "";
 
-    final mediaList = playUrls.map((url) {
-      var finalUrl = url;
-      if (AppSettingsController.instance.playerForceHttps.value) {
-        finalUrl = finalUrl.replaceAll("http://", "https://");
-      }
-      return Media(finalUrl, httpHeaders: playHeaders);
-    }).toList();
-
     // 初始化播放器并设置 ao 参数
     await initializePlayer();
 
-    await player.open(Playlist(mediaList));
+    await player.open(Playlist(_buildMediaList()));
+  }
+
+  /// 重连当前线路：强制重新打开完整线路列表并跳回当前线路
+  /// - 相比 player.jump，player.open 能确保 demuxer 重新拉流
+  /// - 保留完整线路列表，使后续 changePlayLine 的 jump 仍可用
+  void retryCurrentLine() async {
+    currentLineInfo.value = "线路${currentLineIndex + 1}";
+    errorMsg.value = "";
+
+    await player.open(Playlist(_buildMediaList()));
+    if (currentLineIndex > 0) {
+      await player.jump(currentLineIndex);
+    }
   }
 
   void setPlayer() async {
@@ -544,20 +558,22 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     await player.jump(currentLineIndex);
   }
 
+  /// 直播断流重试，带指数退避（500ms → 1s → 2s …）
+  /// 返回 true 表示已触发重试，调用方应直接 return
+  Future<bool> _retryWithBackoff(String reason) async {
+    if (mediaErrorRetryCount >= 2) return false;
+    final delay = Duration(milliseconds: 500 * (1 << mediaErrorRetryCount));
+    Log.d("$reason，${delay.inMilliseconds}ms 后尝试第${mediaErrorRetryCount + 1}次刷新");
+    await Future.delayed(delay);
+    mediaErrorRetryCount += 1;
+    await retryCurrentLine();
+    return true;
+  }
+
   @override
   void mediaEnd() async {
     super.mediaEnd();
-    if (mediaErrorRetryCount < 2) {
-      Log.d("播放结束，尝试第${mediaErrorRetryCount + 1}次刷新");
-      if (mediaErrorRetryCount == 1) {
-        //延迟一秒再刷新
-        await Future.delayed(const Duration(seconds: 1));
-      }
-      mediaErrorRetryCount += 1;
-      //刷新一次
-      setPlayer();
-      return;
-    }
+    if (await _retryWithBackoff("播放结束")) return;
 
     Log.d("播放结束");
     // 遍历线路，如果全部链接都断开就是直播结束了
@@ -565,8 +581,6 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
       liveStatus.value = false;
     } else {
       changePlayLine(currentLineIndex + 1);
-
-      //setPlayer();
     }
   }
 
@@ -574,24 +588,12 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
   @override
   void mediaError(String error) async {
     super.mediaEnd();
-    if (mediaErrorRetryCount < 2) {
-      Log.d("播放失败，尝试第${mediaErrorRetryCount + 1}次刷新");
-      if (mediaErrorRetryCount == 1) {
-        //延迟一秒再刷新
-        await Future.delayed(const Duration(seconds: 1));
-      }
-      mediaErrorRetryCount += 1;
-      //刷新一次
-      setPlayer();
-      return;
-    }
+    if (await _retryWithBackoff("播放失败")) return;
 
     if (playUrls.length - 1 == currentLineIndex) {
       errorMsg.value = "播放失败";
       SmartDialog.showToast("播放失败:$error");
     } else {
-      //currentLineIndex += 1;
-      //setPlayer();
       changePlayLine(currentLineIndex + 1);
     }
   }

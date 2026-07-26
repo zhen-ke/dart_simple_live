@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:canvas_danmaku/canvas_danmaku.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -30,18 +31,14 @@ Widget buildControls(VideoState videoState, LiveRoomController controller) {
       ),
       Center(
         child: // 中间
-            StreamBuilder(
-          stream: videoState.widget.controller.player.stream.buffering,
-          initialData: videoState.widget.controller.player.state.buffering,
-          builder: (_, s) => Visibility(
-            visible: s.data ?? false,
-            child: SizedBox(
-              width: 64.w,
-              height: 64.w,
-              child: CircularProgressIndicator(
-                strokeWidth: 8.w,
-                color: Colors.white,
-              ),
+            PlayerBufferingIndicator(
+          controller: videoState.widget.controller,
+          indicator: (_) => SizedBox(
+            width: 64.w,
+            height: 64.w,
+            child: CircularProgressIndicator(
+              strokeWidth: 8.w,
+              color: Colors.white,
             ),
           ),
         ),
@@ -683,4 +680,49 @@ void showFollowUser(LiveRoomController controller) {
     // 还原焦点
     controller.focusNode.requestFocus();
   });
+}
+
+/// 播放器缓冲指示器
+/// 抽成独立 StatefulWidget：在 initState 中缓存 stream 引用，
+/// 避免父级 Obx 重建时 StreamBuilder 反复重新订阅。
+class PlayerBufferingIndicator extends StatefulWidget {
+  final VideoController controller;
+  final WidgetBuilder? indicator;
+
+  const PlayerBufferingIndicator({
+    super.key,
+    required this.controller,
+    this.indicator,
+  });
+
+  @override
+  State<PlayerBufferingIndicator> createState() =>
+      _PlayerBufferingIndicatorState();
+}
+
+class _PlayerBufferingIndicatorState extends State<PlayerBufferingIndicator> {
+  late final Stream<bool> _stream;
+  late final bool _initial;
+
+  @override
+  void initState() {
+    super.initState();
+    _stream = widget.controller.player.stream.buffering;
+    _initial = widget.controller.player.state.buffering;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<bool>(
+      stream: _stream,
+      initialData: _initial,
+      builder: (_, s) => Visibility(
+        visible: s.data ?? false,
+        child: Center(
+          child: widget.indicator?.call(context) ??
+              const CircularProgressIndicator(),
+        ),
+      ),
+    );
+  }
 }

@@ -264,19 +264,21 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     Log.d("播放链接\r\n：${playUrls[currentLineIndex]}");
   }
 
+  /// 直播断流重试，带指数退避（500ms → 1s → 2s …）
+  /// 返回 true 表示已触发重试，调用方应直接 return
+  Future<bool> _retryWithBackoff(String reason) async {
+    if (mediaErrorRetryCount >= 2) return false;
+    final delay = Duration(milliseconds: 500 * (1 << mediaErrorRetryCount));
+    Log.d("$reason，${delay.inMilliseconds}ms 后尝试第${mediaErrorRetryCount + 1}次刷新");
+    await Future.delayed(delay);
+    mediaErrorRetryCount += 1;
+    await setPlayer();
+    return true;
+  }
+
   @override
   void mediaEnd() async {
-    if (mediaErrorRetryCount < 2) {
-      Log.d("播放结束，尝试第${mediaErrorRetryCount + 1}次刷新");
-      if (mediaErrorRetryCount == 1) {
-        //延迟一秒再刷新
-        await Future.delayed(const Duration(seconds: 1));
-      }
-      mediaErrorRetryCount += 1;
-      //刷新一次
-      setPlayer();
-      return;
-    }
+    if (await _retryWithBackoff("播放结束")) return;
 
     Log.d("播放结束");
     // 遍历线路，如果全部链接都断开就是直播结束了
@@ -284,32 +286,18 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
       liveStatus.value = false;
     } else {
       changePlayLine(currentLineIndex + 1);
-
-      //setPlayer();
     }
   }
 
   int mediaErrorRetryCount = 0;
   @override
   void mediaError(String error) async {
-    if (mediaErrorRetryCount < 2) {
-      Log.d("播放失败，尝试第${mediaErrorRetryCount + 1}次刷新");
-      if (mediaErrorRetryCount == 1) {
-        //延迟一秒再刷新
-        await Future.delayed(const Duration(seconds: 1));
-      }
-      mediaErrorRetryCount += 1;
-      //刷新一次
-      setPlayer();
-      return;
-    }
+    if (await _retryWithBackoff("播放失败")) return;
 
     if (playUrls.length - 1 == currentLineIndex) {
       errorMsg.value = "播放失败";
       SmartDialog.showToast("播放失败:$error");
     } else {
-      //currentLineIndex += 1;
-      //setPlayer();
       changePlayLine(currentLineIndex + 1);
     }
   }
