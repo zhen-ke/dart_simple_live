@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'dart:ui' as ui;
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
@@ -44,11 +46,15 @@ Widget buildFullControls(
 ) {
   var padding = MediaQuery.of(videoState.context).padding;
   GlobalKey volumeButtonkey = GlobalKey();
-  return DragToMoveArea(
-    child: Stack(
-      children: [
-        Container(),
-        buildDanmuView(videoState, controller),
+  return Focus(
+    focusNode: controller.playerFocusNode,
+    autofocus: true,
+    onKeyEvent: (node, event) => _onPlayerKeyEvent(event, controller),
+    child: DragToMoveArea(
+      child: Stack(
+        children: [
+          Container(),
+          buildDanmuView(videoState, controller),
 
         // 左下角SC显示
         Obx(
@@ -73,7 +79,11 @@ Widget buildFullControls(
         Positioned.fill(
           child: GestureDetector(
             onTap: controller.onTap,
-            onDoubleTapDown: controller.onDoubleTap,
+            // 桌面端不注册双击（避免 GestureDetector 等待 ~300ms 判定，单击切换控制条更跟手）
+            // 全屏切换已由 F / Esc / 底栏按钮覆盖
+            onDoubleTapDown: (Platform.isAndroid || Platform.isIOS)
+                ? controller.onDoubleTap
+                : null,
             onLongPress: () {
               if (controller.lockControlsState.value) {
                 return;
@@ -117,25 +127,19 @@ Widget buildFullControls(
                 : -(64 + padding.top),
             duration: const Duration(milliseconds: 220),
             curve: Curves.easeOutCubic,
-            child: Container(
-              height: 44,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.72),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: Colors.white.withOpacity(0.15),
-                  width: 0.8,
+            child: _FrostedBar(
+              child: Container(
+                height: 44,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.45),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.15),
+                    width: 0.8,
+                  ),
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.3),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  )
-                ],
-              ),
-              child: Row(
+                child: Row(
                 children: [
                   IconButton(
                     padding: EdgeInsets.zero,
@@ -144,10 +148,11 @@ Widget buildFullControls(
                       controller.exitCurrentFullScreenMode();
                     },
                     icon: const Icon(
-                      Icons.arrow_back,
+                      Remix.fullscreen_exit_line,
                       color: Colors.white,
                       size: 20,
                     ),
+                    tooltip: "退出全屏",
                   ),
                   const SizedBox(width: 8),
                   Expanded(
@@ -217,6 +222,7 @@ Widget buildFullControls(
                     ),
                   ),
                 ],
+                ),
               ),
             ),
           ),
@@ -232,25 +238,19 @@ Widget buildFullControls(
                 : -(64 + padding.bottom),
             duration: const Duration(milliseconds: 220),
             curve: Curves.easeOutCubic,
-            child: Container(
-              height: 44,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.72),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: Colors.white.withOpacity(0.15),
-                  width: 0.8,
+            child: _FrostedBar(
+              child: Container(
+                height: 44,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.45),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.15),
+                    width: 0.8,
+                  ),
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.3),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  )
-                ],
-              ),
-              child: Row(
+                child: Row(
                 children: [
                   IconButton(
                     padding: EdgeInsets.zero,
@@ -373,7 +373,8 @@ Widget buildFullControls(
                       size: 20,
                     ),
                   ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -429,7 +430,146 @@ Widget buildFullControls(
         ),
       ],
     ),
+    ),
   );
+}
+
+/// 全屏播放器键盘快捷键处理（仅桌面端全屏态生效）
+/// - Space：显示/隐藏控制器
+/// - F / Esc：退出全屏
+/// - ↑/↓：音量±5
+/// - M：静音切换
+/// - C：弹幕开关
+/// - R：刷新
+/// - S：截图
+/// - ←/→：上/下一条线路
+/// - Q：循环清晰度
+/// - 1-9：直接切到对应线路
+KeyEventResult _onPlayerKeyEvent(
+  KeyEvent event,
+  LiveRoomController controller,
+) {
+  if (event is! KeyDownEvent || !controller.fullScreenState.value) {
+    return KeyEventResult.ignored;
+  }
+  final key = event.logicalKey;
+
+  if (key == LogicalKeyboardKey.escape || key == LogicalKeyboardKey.keyF) {
+    controller.exitCurrentFullScreenMode();
+    return KeyEventResult.handled;
+  }
+  if (key == LogicalKeyboardKey.space) {
+    controller.onTap();
+    return KeyEventResult.handled;
+  }
+  if (key == LogicalKeyboardKey.keyR) {
+    controller.refreshRoom();
+    return KeyEventResult.handled;
+  }
+  if (key == LogicalKeyboardKey.keyM) {
+    controller.toggleMute();
+    return KeyEventResult.handled;
+  }
+  if (key == LogicalKeyboardKey.keyC) {
+    controller.showDanmakuState.value = !controller.showDanmakuState.value;
+    return KeyEventResult.handled;
+  }
+  if (key == LogicalKeyboardKey.keyS) {
+    controller.saveScreenshot();
+    return KeyEventResult.handled;
+  }
+  if (key == LogicalKeyboardKey.arrowUp) {
+    controller.adjustVolume(5);
+    return KeyEventResult.handled;
+  }
+  if (key == LogicalKeyboardKey.arrowDown) {
+    controller.adjustVolume(-5);
+    return KeyEventResult.handled;
+  }
+  if (key == LogicalKeyboardKey.arrowRight) {
+    _changePlayLine(controller, 1);
+    return KeyEventResult.handled;
+  }
+  if (key == LogicalKeyboardKey.arrowLeft) {
+    _changePlayLine(controller, -1);
+    return KeyEventResult.handled;
+  }
+  if (key == LogicalKeyboardKey.keyQ) {
+    _cycleQuality(controller);
+    return KeyEventResult.handled;
+  }
+  final digit = _digitFromKey(key);
+  if (digit != null) {
+    final idx = digit - 1;
+    if (idx >= 0 && idx < controller.playUrls.length) {
+      controller.changePlayLine(idx);
+      return KeyEventResult.handled;
+    }
+  }
+  return KeyEventResult.ignored;
+}
+
+int? _digitFromKey(LogicalKeyboardKey key) {
+  const digits = <LogicalKeyboardKey>[
+    LogicalKeyboardKey.digit1,
+    LogicalKeyboardKey.digit2,
+    LogicalKeyboardKey.digit3,
+    LogicalKeyboardKey.digit4,
+    LogicalKeyboardKey.digit5,
+    LogicalKeyboardKey.digit6,
+    LogicalKeyboardKey.digit7,
+    LogicalKeyboardKey.digit8,
+    LogicalKeyboardKey.digit9,
+  ];
+  const numpad = <LogicalKeyboardKey>[
+    LogicalKeyboardKey.numpad1,
+    LogicalKeyboardKey.numpad2,
+    LogicalKeyboardKey.numpad3,
+    LogicalKeyboardKey.numpad4,
+    LogicalKeyboardKey.numpad5,
+    LogicalKeyboardKey.numpad6,
+    LogicalKeyboardKey.numpad7,
+    LogicalKeyboardKey.numpad8,
+    LogicalKeyboardKey.numpad9,
+  ];
+  for (var i = 0; i < digits.length; i++) {
+    if (key == digits[i] || key == numpad[i]) return i + 1;
+  }
+  return null;
+}
+
+void _changePlayLine(LiveRoomController controller, int delta) {
+  final urls = controller.playUrls;
+  if (urls.isEmpty) return;
+  int next = controller.currentLineIndex + delta;
+  if (next < 0) next += urls.length;
+  if (next >= urls.length) next -= urls.length;
+  controller.changePlayLine(next);
+}
+
+void _cycleQuality(LiveRoomController controller) {
+  if (controller.qualites.isEmpty) return;
+  int next = controller.currentQuality + 1;
+  if (next >= controller.qualites.length) next = 0;
+  controller.currentQuality = next;
+  controller.getPlayUrl();
+}
+
+/// 毛玻璃胶囊容器：ClipRRect + BackdropFilter 模糊背后内容
+/// - 用于全屏播放器顶部/底部控制条，营造 macOS 原生 vibrancy 观感
+class _FrostedBar extends StatelessWidget {
+  final Widget child;
+  const _FrostedBar({required this.child});
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: BackdropFilter(
+        filter: ui.ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        child: child,
+      ),
+    );
+  }
 }
 
 Widget buildLockButton(LiveRoomController controller) {
@@ -1146,7 +1286,7 @@ class _PlayerBufferingIndicatorState extends State<PlayerBufferingIndicator> {
         visible: s.data ?? false,
         child: Center(
           child: widget.indicator?.call(context) ??
-              const CircularProgressIndicator(),
+              const CupertinoActivityIndicator(),
         ),
       ),
     );

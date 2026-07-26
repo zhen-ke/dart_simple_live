@@ -151,6 +151,12 @@ mixin PlayerStateMixin on PlayerMixin {
   /// 自动隐藏提示计时器
   Timer? hideSeekTipTimer;
 
+  /// 键盘音量/静音提示的自动隐藏计时器
+  Timer? _keyboardVolumeTipTimer;
+
+  /// 静音前的音量快照（用于恢复）
+  double? _mutedVolume;
+
   /// 是否为竖屏直播间
   var isVertical = false.obs;
 
@@ -217,6 +223,49 @@ mixin PlayerStateMixin on PlayerMixin {
       aspectRatio: aspectRatio,
       fit: boxFit,
     );
+  }
+
+  /// 全屏播放器专用 FocusNode（用于接收键盘快捷键）
+  FocusNode? _playerFocusNode;
+  FocusNode get playerFocusNode {
+    _playerFocusNode ??= FocusNode(debugLabel: 'playerFullscreen');
+    return _playerFocusNode!;
+  }
+
+  /// 键盘调节音量（步进 5），同时给出短暂提示
+  void adjustVolume(int delta) {
+    double next = AppSettingsController.instance.playerVolume.value + delta;
+    if (next < 0) next = 0;
+    if (next > 100) next = 100;
+    player.setVolume(next);
+    AppSettingsController.instance.setPlayerVolume(next);
+    gestureTipText.value = "音量 ${next.toInt()}%";
+    showGestureTip.value = true;
+    _keyboardVolumeTipTimer?.cancel();
+    _keyboardVolumeTipTimer = Timer(const Duration(milliseconds: 800), () {
+      showGestureTip.value = false;
+    });
+  }
+
+  /// 切换静音（再次调用恢复上次音量）
+  void toggleMute() {
+    final current = AppSettingsController.instance.playerVolume.value;
+    double target;
+    if (current > 0) {
+      _mutedVolume = current;
+      target = 0;
+      gestureTipText.value = "静音";
+    } else {
+      target = _mutedVolume ?? 100;
+      gestureTipText.value = "音量 ${target.toInt()}%";
+    }
+    player.setVolume(target);
+    AppSettingsController.instance.setPlayerVolume(target);
+    showGestureTip.value = true;
+    _keyboardVolumeTipTimer?.cancel();
+    _keyboardVolumeTipTimer = Timer(const Duration(milliseconds: 800), () {
+      showGestureTip.value = false;
+    });
   }
 }
 mixin PlayerDanmakuMixin on PlayerStateMixin {
@@ -404,6 +453,12 @@ mixin PlayerSystemMixin on PlayerMixin, PlayerStateMixin, PlayerDanmakuMixin {
       _setDesktopFullScreen(true);
     }
     //danmakuController?.clear();
+    // 桌面端进入全屏后把键盘焦点交给播放器（接收快捷键）
+    if (!(Platform.isAndroid || Platform.isIOS)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        playerFocusNode.requestFocus();
+      });
+    }
   }
 
   /// 退出全屏
@@ -603,6 +658,10 @@ mixin PlayerGestureControlMixin
     on PlayerStateMixin, PlayerMixin, PlayerSystemMixin {
   /// 单击显示/隐藏控制器
   void onTap() {
+    // 桌面端全屏时确保键盘焦点回到播放器（点击按钮/弹窗后焦点可能丢失）
+    if (_isDesktopPlatform && fullScreenState.value) {
+      playerFocusNode.requestFocus();
+    }
     if (showControlsState.value) {
       hideControls();
     } else {
@@ -624,13 +683,12 @@ mixin PlayerGestureControlMixin
   }
 
   void onHover(PointerHoverEvent event, BuildContext context) {
-    final screenHeight = MediaQuery.of(context).size.height;
-    final targetPosition = screenHeight * 0.25; // 计算屏幕顶部25%的位置
-    if (event.position.dy <= targetPosition ||
-        event.position.dy >= targetPosition * 3) {
-      if (!showControlsState.value) {
-        showControls();
-      }
+    // 桌面端约定：鼠标一动就显示控制条，由 resetHideControlsTimer 在静止后隐藏
+    // （不再限制只在顶/底 25% 区域才显示，避免“鼠标在中间移动但控制条不出现”的卡顿感）
+    if (!showControlsState.value) {
+      showControls();
+    } else {
+      resetHideControlsTimer();
     }
   }
 
@@ -672,7 +730,13 @@ mixin PlayerGestureControlMixin
     throttle = DelayedThrottle(200);
 
     verticalDragging = true;
-    _currentVolume = await SystemControlService.instance.getVolume();
+    // 桌面端音量由播放器自身管理（与 showVolumeSlider 一致），
+    // SystemControlService 在桌面端是空操作，会导致手势 UI 变化但音量不变。
+    if (Platform.isAndroid || Platform.isIOS) {
+      _currentVolume = await SystemControlService.instance.getVolume();
+    } else {
+      _currentVolume = AppSettingsController.instance.playerVolume.value / 100;
+    }
     _currentBrightness = await SystemControlService.instance.getBrightness();
 
     // 只有在支持亮度的平台上才显示左侧亮度的调整 UI
@@ -736,7 +800,13 @@ mixin PlayerGestureControlMixin
 
   Future _realSetVolume(int volume) async {
     Log.logPrint(volume);
-    await SystemControlService.instance.setVolume(volume / 100);
+    if (Platform.isAndroid || Platform.isIOS) {
+      await SystemControlService.instance.setVolume(volume / 100);
+    } else {
+      // 桌面端走播放器音量（0-100），与 showVolumeSlider 一致
+      await player.setVolume(volume.toDouble());
+      AppSettingsController.instance.setPlayerVolume(volume.toDouble());
+    }
   }
 
   void setGestureBrightness(double dy) {
@@ -975,6 +1045,9 @@ class PlayerController extends BaseController
     }
     disposeStream();
     disposeDanmakuController();
+    _keyboardVolumeTipTimer?.cancel();
+    _playerFocusNode?.dispose();
+    _playerFocusNode = null;
     await resetSystem();
     await player.dispose();
     super.onClose();
