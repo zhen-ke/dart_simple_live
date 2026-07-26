@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:simple_live_app/app/app_style.dart';
+import 'package:window_manager/window_manager.dart';
 
 import 'indexed_controller.dart';
 
@@ -24,21 +25,33 @@ class IndexedPage extends GetView<IndexedController> {
                         backgroundColor: !Platform.isAndroid && !Platform.isIOS
                             ? (Theme.of(context).brightness == Brightness.light
                                 ? const Color(0xfff5f5f7)
-                                : const Color(0xff1e1e1f))
+                                : const Color(0xff1c1c1e))
                             : null,
                         indicatorColor: Theme.of(context)
                             .colorScheme
                             .primary
-                            .withOpacity(0.12),
+                            .withOpacity(0.14),
                         selectedIconTheme: IconThemeData(
                           color: Theme.of(context).colorScheme.primary,
+                          size: 22,
                         ),
-                        unselectedIconTheme: const IconThemeData(
-                          color: Colors.grey,
+                        unselectedIconTheme: IconThemeData(
+                          color: Theme.of(context).brightness == Brightness.light
+                              ? const Color(0xff8e8e93)
+                              : const Color(0xff98989d),
+                          size: 22,
                         ),
                       ),
                     ),
                     child: NavigationRail(
+                      leading: Platform.isMacOS
+                          ? const SizedBox(
+                              height: 32,
+                              child: DragToMoveArea(
+                                child: SizedBox(width: double.infinity, height: 32),
+                              ),
+                            )
+                          : null,
                       selectedIndex: controller.index.value,
                       onDestinationSelected: controller.setIndex,
                       labelType: NavigationRailLabelType.none,

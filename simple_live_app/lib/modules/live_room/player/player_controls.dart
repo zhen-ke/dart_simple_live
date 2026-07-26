@@ -475,40 +475,53 @@ Widget buildControls(
       ),
       Obx(
         () => AnimatedPositioned(
-          left: 0,
-          right: 0,
-          bottom: controller.showControlsState.value ? 0 : -48,
-          duration: const Duration(milliseconds: 200),
+          left: 12,
+          right: 12,
+          bottom: controller.showControlsState.value ? 12 : -64,
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
           child: Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Colors.transparent,
-                  Colors.black87,
-                ],
+            height: 44,
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.72),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: Colors.white.withOpacity(0.15),
+                width: 0.8,
               ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.3),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                )
+              ],
             ),
             child: Row(
               children: [
                 IconButton(
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                   onPressed: () {
                     controller.refreshRoom();
                   },
                   icon: const Icon(
                     Remix.refresh_line,
                     color: Colors.white,
+                    size: 20,
                   ),
                 ),
                 Offstage(
                   offstage: controller.showDanmakuState.value,
                   child: IconButton(
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                     onPressed: () => controller.showDanmakuState.value =
                         !controller.showDanmakuState.value,
                     icon: const ImageIcon(
                       AssetImage('assets/icons/icon_danmaku_open.png'),
-                      size: 24,
+                      size: 20,
                       color: Colors.white,
                     ),
                   ),
@@ -516,31 +529,36 @@ Widget buildControls(
                 Offstage(
                   offstage: !controller.showDanmakuState.value,
                   child: IconButton(
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                     onPressed: () => controller.showDanmakuState.value =
                         !controller.showDanmakuState.value,
                     icon: const ImageIcon(
                       AssetImage('assets/icons/icon_danmaku_close.png'),
-                      size: 24,
+                      size: 20,
                       color: Colors.white,
                     ),
                   ),
                 ),
                 IconButton(
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                   onPressed: () {
                     controller.showDanmuSettingsSheet();
                   },
                   icon: const ImageIcon(
                     AssetImage('assets/icons/icon_danmaku_setting.png'),
-                    size: 24,
+                    size: 20,
                     color: Colors.white,
                   ),
                 ),
                 Obx(
                   () => Padding(
-                    padding: const EdgeInsets.only(left: 8.0),
+                    padding: const EdgeInsets.only(left: 6.0),
                     child: Text(
                       controller.liveDuration.value,
-                      style: const TextStyle(fontSize: 14, color: Colors.white),
+                      style:
+                          const TextStyle(fontSize: 12.5, color: Colors.white70),
                     ),
                   ),
                 ),
@@ -548,6 +566,8 @@ Widget buildControls(
                 Visibility(
                   visible: !Platform.isAndroid && !Platform.isIOS,
                   child: IconButton(
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                     key: volumeButtonkey,
                     onPressed: () {
                       controller.showVolumeSlider(
@@ -556,7 +576,7 @@ Widget buildControls(
                     },
                     icon: const Icon(
                       Icons.volume_down,
-                      size: 24,
+                      size: 20,
                       color: Colors.white,
                     ),
                   ),
@@ -564,6 +584,10 @@ Widget buildControls(
                 Offstage(
                   offstage: isPortrait,
                   child: TextButton(
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      minimumSize: const Size(0, 32),
+                    ),
                     onPressed: () {
                       controller.showQualitySheet();
                     },
@@ -571,7 +595,7 @@ Widget buildControls(
                       () => Text(
                         controller.currentQualityInfo.value,
                         style:
-                            const TextStyle(color: Colors.white, fontSize: 15),
+                            const TextStyle(color: Colors.white, fontSize: 13),
                       ),
                     ),
                   ),
@@ -579,35 +603,45 @@ Widget buildControls(
                 Offstage(
                   offstage: isPortrait,
                   child: TextButton(
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      minimumSize: const Size(0, 32),
+                    ),
                     onPressed: () {
                       controller.showPlayUrlsSheet();
                     },
                     child: Text(
                       controller.currentLineInfo.value,
-                      style: const TextStyle(color: Colors.white, fontSize: 15),
+                      style: const TextStyle(color: Colors.white, fontSize: 13),
                     ),
                   ),
                 ),
                 Visibility(
                   visible: !Platform.isAndroid && !Platform.isIOS,
                   child: IconButton(
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                     onPressed: () {
                       controller.enterSmallWindow();
                     },
                     icon: const Icon(
                       Icons.picture_in_picture,
                       color: Colors.white,
-                      size: 24,
+                      size: 20,
                     ),
+                    tooltip: "画中画/小窗",
                   ),
                 ),
                 IconButton(
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                   onPressed: () {
                     controller.enterFullScreen();
                   },
                   icon: const Icon(
                     Remix.fullscreen_line,
                     color: Colors.white,
+                    size: 20,
                   ),
                 ),
               ],

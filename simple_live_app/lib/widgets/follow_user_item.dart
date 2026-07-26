@@ -155,13 +155,16 @@ class _FollowUserItemState extends State<FollowUserItem> {
   Widget _buildDesktopCard(BuildContext context) {
     var site = Sites.allSites[widget.item.siteId]!;
     bool isLive = widget.item.liveStatus.value == 2;
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
 
     // Platform gradient colors
     Gradient headerGradient;
     if (!isLive) {
       // Gray/muted gradient for offline
-      headerGradient = const LinearGradient(
-        colors: [Color(0xffbdc3c7), Color(0xff95a5a6)],
+      headerGradient = LinearGradient(
+        colors: isDark
+            ? [const Color(0xff3a3f47), const Color(0xff2b2e34)]
+            : [const Color(0xffc5cad0), const Color(0xffa2a8b0)],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       );
@@ -169,21 +172,21 @@ class _FollowUserItemState extends State<FollowUserItem> {
       switch (widget.item.siteId) {
         case 'bilibili':
           headerGradient = const LinearGradient(
-            colors: [Color(0xfffb7299), Color(0xfffc8ea5)],
+            colors: [Color(0xffff6699), Color(0xffff85a2)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           );
           break;
         case 'douyu':
           headerGradient = const LinearGradient(
-            colors: [Color(0xfffe5c00), Color(0xffff8a00)],
+            colors: [Color(0xffff5500), Color(0xffff8800)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           );
           break;
         case 'huya':
           headerGradient = const LinearGradient(
-            colors: [Color(0xffffaa00), Color(0xffffc83b)],
+            colors: [Color(0xffff9900), Color(0xffffbb00)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           );
@@ -191,8 +194,8 @@ class _FollowUserItemState extends State<FollowUserItem> {
         default:
           headerGradient = LinearGradient(
             colors: [
-              Theme.of(context).colorScheme.primary.withOpacity(0.8),
               Theme.of(context).colorScheme.primary,
+              Theme.of(context).colorScheme.primary.withOpacity(0.8),
             ],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
@@ -208,195 +211,239 @@ class _FollowUserItemState extends State<FollowUserItem> {
         onLongPress: widget.onLongPress,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
-          transform: Matrix4.identity()..translate(0.0, _isHovered ? -4.0 : 0.0),
+          curve: Curves.easeOutCubic,
+          transform: Matrix4.identity()..translate(0.0, _isHovered ? -5.0 : 0.0),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(_isHovered ? 0.08 : 0.03),
-                blurRadius: _isHovered ? 12 : 6,
-                offset: const Offset(0, 4),
+                color: isLive
+                    ? (widget.item.siteId == 'bilibili'
+                        ? const Color(0xffff6699).withOpacity(_isHovered ? 0.25 : 0.08)
+                        : Colors.black.withOpacity(_isHovered ? 0.12 : 0.04))
+                    : Colors.black.withOpacity(_isHovered ? 0.08 : 0.02),
+                blurRadius: _isHovered ? 16 : 8,
+                offset: Offset(0, _isHovered ? 8 : 4),
               ),
             ],
           ),
-          child: Card(
-            margin: EdgeInsets.zero,
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-              side: BorderSide(
-                color: Theme.of(context).dividerColor.withOpacity(0.08),
-                width: 1,
+          child: AnimatedOpacity(
+            duration: const Duration(milliseconds: 200),
+            opacity: isLive ? 1.0 : (_isHovered ? 0.95 : 0.82),
+            child: Card(
+              margin: EdgeInsets.zero,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: BorderSide(
+                  color: _isHovered
+                      ? Theme.of(context).colorScheme.primary.withOpacity(0.3)
+                      : Theme.of(context).dividerColor.withOpacity(0.08),
+                  width: 1.2,
+                ),
               ),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-              child: SizedBox(
-                height: 175,
-                child: Stack(
-                  children: [
-                    // Header Gradient background
-                    Container(
-                      height: 65,
-                      decoration: BoxDecoration(
-                        gradient: headerGradient,
-                      ),
-                    ),
-                    // Avatar (floating)
-                    Positioned(
-                      top: 35,
-                      left: 0,
-                      right: 0,
-                      child: Center(
-                        child: Container(
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: Theme.of(context).cardColor,
-                              width: 3,
-                            ),
-                          ),
-                          child: NetImage(
-                            widget.item.face,
-                            width: 52,
-                            height: 52,
-                            borderRadius: 26,
-                          ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: SizedBox(
+                  height: 175,
+                  child: Stack(
+                    children: [
+                      // Header Gradient background
+                      Container(
+                        height: 68,
+                        decoration: BoxDecoration(
+                          gradient: headerGradient,
                         ),
                       ),
-                    ),
-                    // Content
-                    Positioned(
-                      top: 98,
-                      left: 12,
-                      right: 12,
-                      bottom: 8,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          Text(
-                            widget.item.userName,
-                            style: const TextStyle(
-                              fontSize: 13.5,
-                              fontWeight: FontWeight.w600,
+                      // Top Left Status Badge (Glassmorphism Pill)
+                      Positioned(
+                        top: 8,
+                        left: 8,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.3),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.2),
+                              width: 0.5,
                             ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
                           ),
-                          const SizedBox(height: 6),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
                             children: [
-                              Image.asset(
-                                site.logo,
-                                width: 14,
-                                height: 14,
+                              Container(
+                                width: 6,
+                                height: 6,
+                                decoration: BoxDecoration(
+                                  color: isLive ? const Color(0xff34c759) : const Color(0xffaeaeb2),
+                                  shape: BoxShape.circle,
+                                  boxShadow: isLive
+                                      ? [
+                                          BoxShadow(
+                                            color: const Color(0xff34c759).withOpacity(0.8),
+                                            blurRadius: 4,
+                                            spreadRadius: 1,
+                                          )
+                                        ]
+                                      : null,
+                                ),
                               ),
-                              const SizedBox(width: 4),
+                              const SizedBox(width: 5),
                               Text(
-                                site.name,
+                                isLive ? "LIVE" : "离线",
                                 style: const TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.grey,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Obx(
-                                () => Container(
-                                  width: 6,
-                                  height: 6,
-                                  decoration: BoxDecoration(
-                                    color: widget.item.liveStatus.value == 2
-                                        ? Colors.green
-                                        : Colors.grey,
-                                    shape: BoxShape.circle,
-                                    boxShadow: widget.item.liveStatus.value == 2
-                                        ? [
-                                            BoxShadow(
-                                              color: Colors.green.withOpacity(0.5),
-                                              blurRadius: 4,
-                                              spreadRadius: 1,
-                                            )
-                                          ]
-                                        : null,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 4),
-                              Obx(
-                                () => Text(
-                                  widget.item.liveStatus.value == 2 ? "直播中" : "未开播",
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.normal,
-                                    color: widget.item.liveStatus.value == 2
-                                        ? Colors.green
-                                        : Colors.grey,
-                                  ),
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: 0.5,
                                 ),
                               ),
                             ],
                           ),
-                          const SizedBox(height: 4),
-                          Obx(
-                            () => widget.playing
-                                ? Text(
-                                    "正在观看",
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: Theme.of(context).colorScheme.primary,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  )
-                                : widget.item.liveStatus.value == 2 &&
-                                        widget.item.liveStartTime != null
-                                    ? Text(
-                                        '开播了${formatLiveDuration(widget.item.liveStartTime)}',
-                                        style: const TextStyle(
-                                          fontSize: 11,
-                                          color: Colors.grey,
-                                        ),
-                                      )
-                                    : const Text(
-                                        "离线",
+                        ),
+                      ),
+                      // Avatar (floating)
+                      Positioned(
+                        top: 36,
+                        left: 0,
+                        right: 0,
+                        child: Center(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: Theme.of(context).cardColor,
+                                width: 3.5,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.1),
+                                  blurRadius: 6,
+                                  offset: const Offset(0, 2),
+                                )
+                              ],
+                            ),
+                            child: NetImage(
+                              widget.item.face,
+                              width: 52,
+                              height: 52,
+                              borderRadius: 26,
+                            ),
+                          ),
+                        ),
+                      ),
+                      // Content
+                      Positioned(
+                        top: 100,
+                        left: 12,
+                        right: 12,
+                        bottom: 8,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Text(
+                              widget.item.userName,
+                              style: const TextStyle(
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 6),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Image.asset(
+                                  site.logo,
+                                  width: 14,
+                                  height: 14,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  site.name,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: isDark
+                                        ? const Color(0xff98989d)
+                                        : const Color(0xff8e8e93),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            Obx(
+                              () => widget.playing
+                                  ? Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: Theme.of(context).colorScheme.primary.withOpacity(0.12),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Text(
+                                        "正在观看",
                                         style: TextStyle(
                                           fontSize: 11,
-                                          color: Colors.grey,
+                                          color: Theme.of(context).colorScheme.primary,
+                                          fontWeight: FontWeight.bold,
                                         ),
                                       ),
-                          ),
-                        ],
+                                    )
+                                  : widget.item.liveStatus.value == 2 &&
+                                          widget.item.liveStartTime != null
+                                      ? Text(
+                                          '开播了 ${formatLiveDuration(widget.item.liveStartTime)}',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: isDark
+                                                ? const Color(0xffaeaeb2)
+                                                : const Color(0xff6e6e73),
+                                          ),
+                                        )
+                                      : Text(
+                                          "未开播",
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: isDark
+                                                ? const Color(0xff636366)
+                                                : const Color(0xff8e8e93),
+                                          ),
+                                        ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                    // Hover Action - Dislike/Remove button
-                    if (widget.onRemove != null)
-                      Positioned(
-                        top: 8,
-                        right: 8,
-                        child: AnimatedOpacity(
-                          opacity: _isHovered ? 1.0 : 0.0,
-                          duration: const Duration(milliseconds: 150),
-                          child: IgnorePointer(
-                            ignoring: !_isHovered,
-                            child: GestureDetector(
-                              onTap: widget.onRemove,
-                              child: Container(
-                                padding: const EdgeInsets.all(4),
-                                decoration: BoxDecoration(
-                                  color: Colors.black.withOpacity(0.4),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(
-                                  Remix.dislike_line,
-                                  color: Colors.white,
-                                  size: 14,
+                      // Hover Action - Dislike/Remove button
+                      if (widget.onRemove != null)
+                        Positioned(
+                          top: 8,
+                          right: 8,
+                          child: AnimatedOpacity(
+                            opacity: _isHovered ? 1.0 : 0.0,
+                            duration: const Duration(milliseconds: 150),
+                            child: IgnorePointer(
+                              ignoring: !_isHovered,
+                              child: GestureDetector(
+                                onTap: widget.onRemove,
+                                child: Container(
+                                  padding: const EdgeInsets.all(5),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withOpacity(0.45),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Remix.dislike_line,
+                                    color: Colors.white,
+                                    size: 13,
+                                  ),
                                 ),
                               ),
                             ),
                           ),
                         ),
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),

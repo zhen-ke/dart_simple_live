@@ -112,11 +112,12 @@ Future initWindow() async {
     return;
   }
   await windowManager.ensureInitialized();
-  WindowOptions windowOptions = const WindowOptions(
-    size: Size(1200, 800),
-    minimumSize: Size(280, 280),
+  WindowOptions windowOptions = WindowOptions(
+    size: const Size(1200, 800),
+    minimumSize: const Size(280, 280),
     center: true,
     title: "Simple Live",
+    titleBarStyle: Platform.isMacOS ? TitleBarStyle.hidden : TitleBarStyle.normal,
   );
   windowManager.waitUntilReadyToShow(windowOptions, () async {
     await windowManager.show();

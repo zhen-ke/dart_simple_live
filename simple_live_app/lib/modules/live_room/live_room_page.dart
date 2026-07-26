@@ -301,61 +301,73 @@ class LiveRoomPage extends GetView<LiveRoomController> {
   }
 
   Widget buildUserProfile(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
         border: Border(
-          top: BorderSide(
-            color: Colors.grey.withAlpha(25),
-          ),
           bottom: BorderSide(
-            color: Colors.grey.withAlpha(25),
+            color: isDark
+                ? Colors.white.withOpacity(0.08)
+                : Colors.black.withOpacity(0.06),
           ),
         ),
       ),
-      padding: AppStyle.edgeInsetsA8.copyWith(
-        left: 12,
-        right: 12,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       child: Obx(
         () => Row(
           mainAxisAlignment: MainAxisAlignment.start,
           children: [
             Container(
               decoration: BoxDecoration(
-                border: Border.all(color: Colors.grey.withAlpha(50)),
-                borderRadius: AppStyle.radius24,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
+                  width: 1.5,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.06),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  )
+                ],
               ),
               child: NetImage(
                 controller.detail.value?.userAvatar ?? "",
-                width: 48,
-                height: 48,
-                borderRadius: 24,
+                width: 44,
+                height: 44,
+                borderRadius: 22,
               ),
             ),
-            AppStyle.hGap12,
+            const SizedBox(width: 10),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     controller.detail.value?.userName ?? "",
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  AppStyle.vGap4,
+                  const SizedBox(height: 3),
                   Row(
                     children: [
                       Image.asset(
                         controller.site.logo,
-                        width: 20,
+                        width: 15,
+                        height: 15,
                       ),
-                      AppStyle.hGap4,
+                      const SizedBox(width: 4),
                       Text(
                         controller.site.name,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: isDark ? const Color(0xff98989d) : const Color(0xff8e8e93),
                         ),
                       ),
                     ],
@@ -363,48 +375,70 @@ class LiveRoomPage extends GetView<LiveRoomController> {
                 ],
               ),
             ),
-            AppStyle.hGap12,
+            const SizedBox(width: 8),
             if (Platform.isAndroid || Platform.isIOS)
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(
-                    Remix.fire_fill,
-                    size: 20,
-                    color: Colors.orange,
-                  ),
-                  AppStyle.hGap4,
-                  Text(
-                    Utils.onlineToString(
-                      controller.detail.value?.online ?? 0,
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Remix.fire_fill,
+                      size: 15,
+                      color: Colors.orange,
                     ),
-                    style: const TextStyle(fontSize: 14),
-                  ),
-                ],
+                    const SizedBox(width: 3),
+                    Text(
+                      Utils.onlineToString(
+                        controller.detail.value?.online ?? 0,
+                      ),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.orange,
+                      ),
+                    ),
+                  ],
+                ),
               )
             else
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(
-                        Remix.fire_fill,
-                        size: 16,
-                        color: Colors.orange,
-                      ),
-                      AppStyle.hGap4,
-                      Text(
-                        Utils.onlineToString(
-                          controller.detail.value?.online ?? 0,
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Remix.fire_fill,
+                          size: 13,
+                          color: Colors.orange,
                         ),
-                        style: const TextStyle(fontSize: 12, color: Colors.grey),
-                      ),
-                    ],
+                        const SizedBox(width: 3),
+                        Text(
+                          Utils.onlineToString(
+                            controller.detail.value?.online ?? 0,
+                          ),
+                          style: const TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.orange,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                  AppStyle.vGap4,
+                  const SizedBox(height: 4),
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -412,10 +446,10 @@ class LiveRoomPage extends GetView<LiveRoomController> {
                         constraints: const BoxConstraints(),
                         padding: const EdgeInsets.all(4),
                         onPressed: controller.refreshRoom,
-                        icon: const Icon(Remix.refresh_line, size: 18),
+                        icon: const Icon(Remix.refresh_line, size: 16),
                         tooltip: "刷新",
                       ),
-                      AppStyle.hGap8,
+                      const SizedBox(width: 6),
                       IconButton(
                         constraints: const BoxConstraints(),
                         padding: const EdgeInsets.all(4),
@@ -426,16 +460,18 @@ class LiveRoomPage extends GetView<LiveRoomController> {
                           controller.followed.value
                               ? Remix.heart_fill
                               : Remix.heart_line,
-                          size: 18,
-                          color: controller.followed.value ? Colors.red : null,
+                          size: 16,
+                          color: controller.followed.value
+                              ? const Color(0xffff3b30)
+                              : null,
                         ),
                         tooltip: controller.followed.value ? "取消关注" : "关注",
                       ),
-                      AppStyle.hGap8,
+                      const SizedBox(width: 6),
                       PopupMenuButton<int>(
                         constraints: const BoxConstraints(),
                         padding: const EdgeInsets.all(4),
-                        icon: const Icon(Remix.share_forward_line, size: 18),
+                        icon: const Icon(Remix.share_forward_line, size: 16),
                         tooltip: "分享",
                         itemBuilder: (context) {
                           return [
@@ -443,7 +479,7 @@ class LiveRoomPage extends GetView<LiveRoomController> {
                               value: 0,
                               child: Row(
                                 children: [
-                                  Icon(Remix.share_circle_line, size: 16),
+                                  Icon(Remix.share_circle_line, size: 15),
                                   SizedBox(width: 8),
                                   Text("分享直播间", style: TextStyle(fontSize: 12)),
                                 ],
@@ -453,7 +489,7 @@ class LiveRoomPage extends GetView<LiveRoomController> {
                               value: 1,
                               child: Row(
                                 children: [
-                                  Icon(Remix.links_line, size: 16),
+                                  Icon(Remix.links_line, size: 15),
                                   SizedBox(width: 8),
                                   Text("复制网页链接", style: TextStyle(fontSize: 12)),
                                 ],
@@ -463,7 +499,7 @@ class LiveRoomPage extends GetView<LiveRoomController> {
                               value: 2,
                               child: Row(
                                 children: [
-                                  Icon(Remix.play_circle_line, size: 16),
+                                  Icon(Remix.play_circle_line, size: 15),
                                   SizedBox(width: 8),
                                   Text("复制播放直链", style: TextStyle(fontSize: 12)),
                                 ],
@@ -554,94 +590,131 @@ class LiveRoomPage extends GetView<LiveRoomController> {
     return Expanded(
       child: DefaultTabController(
         length: controller.site.id == Constant.kBiliBili ? 4 : 3,
-        child: Column(
-          children: [
-            TabBar(
-              indicatorSize: TabBarIndicatorSize.tab,
-              labelPadding: EdgeInsets.zero,
-              indicatorWeight: 1.0,
-              tabs: [
-                const Tab(
-                  text: "聊天",
-                ),
-                if (controller.site.id == Constant.kBiliBili)
-                  Tab(
-                    child: Obx(
-                      () => Text(
-                        controller.superChats.isNotEmpty
-                            ? "SC(${controller.superChats.length})"
-                            : "SC",
+        child: Builder(
+          builder: (context) {
+            final isDark = Theme.of(context).brightness == Brightness.dark;
+            final primaryColor = Theme.of(context).colorScheme.primary;
+            return Column(
+              children: [
+                Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  height: 34,
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? Colors.white.withOpacity(0.06)
+                        : Colors.black.withOpacity(0.04),
+                    borderRadius: BorderRadius.circular(9),
+                  ),
+                  child: TabBar(
+                    indicatorSize: TabBarIndicatorSize.tab,
+                    indicator: BoxDecoration(
+                      color: primaryColor.withOpacity(isDark ? 0.22 : 0.14),
+                      borderRadius: BorderRadius.circular(7),
+                      border: Border.all(
+                        color: primaryColor.withOpacity(0.35),
+                        width: 1,
                       ),
                     ),
-                  ),
-                const Tab(
-                  text: "关注",
-                ),
-                const Tab(
-                  text: "设置",
-                ),
-              ],
-            ),
-            Expanded(
-              child: TabBarView(
-                children: [
-                  Obx(() {
-                    final textGap =
-                        AppSettingsController.instance.chatTextGap.value;
-                    final textSize =
-                        AppSettingsController.instance.chatTextSize.value;
-                    final bubbleStyle =
-                        AppSettingsController.instance.chatBubbleStyle.value;
-                    return Stack(
-                      children: [
-                        GetBuilder<LiveRoomController>(
-                          id: 'chatList',
-                          builder: (_) => ListView.separated(
-                            controller: controller.scrollController,
-                            separatorBuilder: (_, i) => SizedBox(
-                              // *2与原来的EdgeInsets.symmetric(vertical: )做兼容
-                              height: textGap * 2,
+                    labelColor: primaryColor,
+                    unselectedLabelColor: isDark
+                        ? const Color(0xffa0a0a5)
+                        : const Color(0xff6e6e73),
+                    labelStyle: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    unselectedLabelStyle: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.normal,
+                    ),
+                    dividerColor: Colors.transparent,
+                    labelPadding: EdgeInsets.zero,
+                    tabs: [
+                      const Tab(
+                        text: "聊天",
+                      ),
+                      if (controller.site.id == Constant.kBiliBili)
+                        Tab(
+                          child: Obx(
+                            () => Text(
+                              controller.superChats.isNotEmpty
+                                  ? "SC(${controller.superChats.length})"
+                                  : "SC",
                             ),
-                            padding: AppStyle.edgeInsetsA12,
-                            itemCount: controller.messages.length,
-                            itemBuilder: (_, i) {
-                              var item = controller.messages[i];
-                              return RepaintBoundary(
-                                child: buildMessageItem(
-                                  item,
-                                  textSize: textSize,
-                                  bubbleStyle: bubbleStyle,
-                                ),
-                              );
-                            },
                           ),
                         ),
-                        Obx(() => Visibility(
-                          visible: controller.disableAutoScroll.value,
-                          child: Positioned(
-                            right: 12,
-                            bottom: 12,
-                            child: ElevatedButton.icon(
-                              onPressed: () {
-                                controller.disableAutoScroll.value = false;
-                                controller.chatScrollToBottom();
-                              },
-                              icon: const Icon(Icons.expand_more),
-                              label: const Text("最新"),
+                      const Tab(
+                        text: "关注",
+                      ),
+                      const Tab(
+                        text: "设置",
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: TabBarView(
+                    children: [
+                      Obx(() {
+                        final textGap =
+                            AppSettingsController.instance.chatTextGap.value;
+                        final textSize =
+                            AppSettingsController.instance.chatTextSize.value;
+                        final bubbleStyle =
+                            AppSettingsController.instance.chatBubbleStyle.value;
+                        return Stack(
+                          children: [
+                            GetBuilder<LiveRoomController>(
+                              id: 'chatList',
+                              builder: (_) => ListView.separated(
+                                controller: controller.scrollController,
+                                separatorBuilder: (_, i) => SizedBox(
+                                  // *2与原来的EdgeInsets.symmetric(vertical: )做兼容
+                                  height: textGap * 2,
+                                ),
+                                padding: AppStyle.edgeInsetsA12,
+                                itemCount: controller.messages.length,
+                                itemBuilder: (_, i) {
+                                  var item = controller.messages[i];
+                                  return RepaintBoundary(
+                                    child: buildMessageItem(
+                                      item,
+                                      textSize: textSize,
+                                      bubbleStyle: bubbleStyle,
+                                    ),
+                                  );
+                                },
+                              ),
                             ),
-                          ),
-                        )),
-                      ],
-                    );
-                  }),
-                  if (controller.site.id == Constant.kBiliBili)
-                    buildSuperChats(),
-                  buildFollowList(),
-                  buildSettings(),
-                ],
-              ),
-            ),
-          ],
+                            Obx(() => Visibility(
+                              visible: controller.disableAutoScroll.value,
+                              child: Positioned(
+                                right: 12,
+                                bottom: 12,
+                                child: ElevatedButton.icon(
+                                  onPressed: () {
+                                    controller.disableAutoScroll.value = false;
+                                    controller.chatScrollToBottom();
+                                  },
+                                  icon: const Icon(Icons.expand_more),
+                                  label: const Text("最新"),
+                                ),
+                              ),
+                            )),
+                          ],
+                        );
+                      }),
+                      if (controller.site.id == Constant.kBiliBili)
+                        buildSuperChats(),
+                      buildFollowList(),
+                      buildSettings(),
+                    ],
+                  ),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
