@@ -27,6 +27,8 @@ class FollowUserPage extends GetView<FollowUserController> {
     return Scaffold(
       appBar: AppBar(
         title: const Text("关注用户"),
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
         actions: [
           PopupMenuButton(
             itemBuilder: (context) {

@@ -25,7 +25,9 @@ class AppStyle {
     fontFamily: Platform.isWindows ? "Microsoft YaHei" : null,
     visualDensity: VisualDensity.standard,
     appBarTheme: AppBarTheme(
-      //elevation: 0,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      surfaceTintColor: Colors.transparent,
       centerTitle: true,
       titleTextStyle: const TextStyle(
         fontSize: 16,
@@ -69,7 +71,9 @@ class AppStyle {
           fontFamily: Platform.isWindows ? "Microsoft YaHei" : null,
         ),
     appBarTheme: AppBarTheme(
-      //elevation: 0,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      surfaceTintColor: Colors.transparent,
 
       centerTitle: true,
       titleTextStyle: const TextStyle(
