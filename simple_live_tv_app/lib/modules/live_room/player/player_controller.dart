@@ -16,24 +16,46 @@ mixin PlayerMixin {
   GlobalKey<VideoState> globalPlayerKey = GlobalKey<VideoState>();
   GlobalKey globalDanmuKey = GlobalKey();
 
+  /// 是否已执行过播放器参数初始化
+  /// - mpv 内核参数只需设置一次，切换线路时无需重复设置
+  bool _playerInitialized = false;
+
   /// 播放器实例
   late final player = Player(
-    configuration: const PlayerConfiguration(
+    configuration: PlayerConfiguration(
       title: "Simple Live Player",
-      // bufferSize:
-      //     // media-kit #549
-      //     AppSettingsController.instance.playerBufferSize.value * 1024 * 1024,
+      // 设置 demuxer-max-bytes（媒体缓冲上限）。
+      // media_kit 通过 PlayerConfiguration.bufferSize 在内核启动时一次性注入，
+      // 比 setProperty 更可靠（参见 media_kit #549）。
+      bufferSize:
+          AppSettingsController.instance.playerBufferSize.value * 1024 * 1024,
     ),
   );
 
-  /// 初始化播放器并设置 ao 参数
+  /// 初始化播放器参数（仅执行一次）
   Future<void> initializePlayer() async {
+    if (_playerInitialized) return;
+    _playerInitialized = true;
+
     var pp = player.platform as NativePlayer;
 
     // media_kit 仓库更新导致的问题，临时解决办法
     if (Platform.isAndroid) {
       await pp.setProperty('force-seekable', 'yes');
     }
+
+    // 直播流参数
+    final backBytes =
+        (AppSettingsController.instance.playerBufferSize.value * 1024 * 1024) ~/
+        2;
+    await pp.setProperty('demuxer-max-back-bytes', '$backBytes');
+    await pp.setProperty('demuxer-seekable-cache', 'yes');
+    await pp.setProperty('cache-secs', '3');
+    await pp.setProperty('network-timeout', '15');
+    await pp.setProperty(
+      'stream-lavf-opts',
+      'reconnect_streamed=1,reconnect_at_eof=1,reconnect_delay_max=2',
+    );
   }
 
   /// 视频控制器

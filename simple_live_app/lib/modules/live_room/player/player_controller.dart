@@ -28,38 +28,60 @@ mixin PlayerMixin {
   GlobalKey<VideoState> globalPlayerKey = GlobalKey<VideoState>();
   GlobalKey globalDanmuKey = GlobalKey();
 
+  /// 是否已执行过播放器参数初始化
+  /// - mpv 内核参数只需设置一次，切换线路/清晰度时无需重复设置
+  bool _playerInitialized = false;
+
   /// 播放器实例
   late final player = Player(
     configuration: PlayerConfiguration(
       title: "Simple Live Player",
+      // 设置 demuxer-max-bytes（媒体缓冲上限）。
+      // media_kit 通过 PlayerConfiguration.bufferSize 在内核启动时一次性注入，
+      // 比 setProperty 更可靠（参见 media_kit #549）。
+      bufferSize:
+          AppSettingsController.instance.playerBufferSize.value * 1024 * 1024,
       logLevel: AppSettingsController.instance.logEnable.value
           ? MPVLogLevel.info
           : MPVLogLevel.error,
     ),
   );
 
-  /// 初始化播放器并设置 ao 参数
+  /// 初始化播放器参数（仅执行一次）
+  /// - ao / force-seekable / 直播流缓存与重连参数
   Future<void> initializePlayer() async {
+    if (_playerInitialized) return;
+    _playerInitialized = true;
+
     var pp = player.platform as NativePlayer;
     // 设置音频输出驱动
     if (AppSettingsController.instance.customPlayerOutput.value) {
-      if (player.platform is NativePlayer) {
-        await (player.platform as dynamic).setProperty(
-          'ao',
-          AppSettingsController.instance.audioOutputDriver.value,
-        );
-      }
+      await pp.setProperty(
+        'ao',
+        AppSettingsController.instance.audioOutputDriver.value,
+      );
     }
     // media_kit 仓库更新导致的问题，临时解决办法
-    if(Platform.isAndroid){
+    if (Platform.isAndroid) {
       await pp.setProperty('force-seekable', 'yes');
     }
 
-    // 针对桌面端释放内存压力：大幅缩减 mpv 内核对于直播流的网络缓冲容量
-    if (Platform.isMacOS || Platform.isWindows || Platform.isLinux) {
-      await pp.setProperty('demuxer-max-bytes', '32000000'); // 32MB
-      await pp.setProperty('demuxer-max-back-bytes', '16000000'); // 16MB
-    }
+    // 直播流参数：移动端同样限制回退缓存，避免长时间观看内存持续增长
+    final backBytes =
+        (AppSettingsController.instance.playerBufferSize.value * 1024 * 1024) ~/
+        2;
+    await pp.setProperty('demuxer-max-back-bytes', '$backBytes');
+    // 直播回退缓存可寻址，断流后可快速恢复
+    await pp.setProperty('demuxer-seekable-cache', 'yes');
+    // 目标缓存秒数（与 demuxer-max-bytes 共同约束直播缓冲，兼顾延迟与抖动恢复）
+    await pp.setProperty('cache-secs', '3');
+    // 网络卡死时快速失败，交给上层切线路，而不是无限等待
+    await pp.setProperty('network-timeout', '15');
+    // HTTP/HLS 分片请求断流自动重连，减少上层 mediaError 重试
+    await pp.setProperty(
+      'stream-lavf-opts',
+      'reconnect_streamed=1,reconnect_at_eof=1,reconnect_delay_max=2',
+    );
   }
 
   /// 视频控制器
