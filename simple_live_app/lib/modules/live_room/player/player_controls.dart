@@ -116,93 +116,111 @@ Widget buildFullControls(
         // 顶部
         Obx(
           () => AnimatedPositioned(
-            left: 0,
-            right: 0,
+            left: padding.left + 16,
+            right: padding.right + 16,
             top: (controller.showControlsState.value &&
                     !controller.lockControlsState.value)
-                ? 0
-                : -(48 + padding.top),
-            duration: const Duration(milliseconds: 200),
+                ? (padding.top > 0 ? padding.top + 8 : 12)
+                : -(64 + padding.top),
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
             child: Container(
-              height: 48 + padding.top,
-              padding: EdgeInsets.only(
-                left: padding.left + 12,
-                right: padding.right + 12,
-                top: padding.top,
-              ),
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.bottomCenter,
-                  end: Alignment.topCenter,
-                  colors: [
-                    Colors.transparent,
-                    Colors.black87,
-                  ],
+              height: 44,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.72),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.15),
+                  width: 0.8,
                 ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.3),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  )
+                ],
               ),
               child: Row(
                 children: [
                   IconButton(
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                     onPressed: () {
                       controller.exitCurrentFullScreenMode();
                     },
                     icon: const Icon(
                       Icons.arrow_back,
                       color: Colors.white,
-                      size: 24,
+                      size: 20,
                     ),
                   ),
-                  AppStyle.hGap12,
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      "${controller.detail.value?.title} - ${controller.detail.value?.userName}",
+                      "${controller.detail.value?.title ?? ''} - ${controller.detail.value?.userName ?? ''}",
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: Colors.white, fontSize: 16),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
-                  AppStyle.hGap12,
+                  const SizedBox(width: 8),
                   IconButton(
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                     onPressed: () {
                       controller.saveScreenshot();
                     },
                     icon: const Icon(
                       Icons.camera_alt_outlined,
                       color: Colors.white,
-                      size: 24,
+                      size: 20,
                     ),
+                    tooltip: "截图",
                   ),
                   IconButton(
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                     onPressed: () {
                       showFollowUser(controller);
                     },
                     icon: const Icon(
                       Remix.play_list_2_line,
                       color: Colors.white,
-                      size: 24,
+                      size: 20,
                     ),
+                    tooltip: "关注列表",
                   ),
                   Visibility(
                     visible: Platform.isAndroid,
                     child: IconButton(
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                       onPressed: () {
                         controller.enablePIP();
                       },
                       icon: const Icon(
                         Icons.picture_in_picture,
                         color: Colors.white,
-                        size: 24,
+                        size: 20,
                       ),
                     ),
                   ),
                   IconButton(
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                     onPressed: () {
                       showPlayerSettings(controller);
                     },
                     icon: const Icon(
                       Icons.more_horiz,
                       color: Colors.white,
-                      size: 24,
+                      size: 20,
                     ),
                   ),
                 ],
@@ -213,48 +231,56 @@ Widget buildFullControls(
         // 底部
         Obx(
           () => AnimatedPositioned(
-            left: 0,
-            right: 0,
+            left: padding.left + 16,
+            right: padding.right + 16,
             bottom: (controller.showControlsState.value &&
                     !controller.lockControlsState.value)
-                ? 0
-                : -(80 + padding.bottom),
-            duration: const Duration(milliseconds: 200),
+                ? (padding.bottom > 0 ? padding.bottom + 8 : 12)
+                : -(64 + padding.bottom),
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
             child: Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.transparent,
-                    Colors.black87,
-                  ],
+              height: 44,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.72),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.15),
+                  width: 0.8,
                 ),
-              ),
-              padding: EdgeInsets.only(
-                left: padding.left + 12,
-                right: padding.right + 12,
-                bottom: padding.bottom,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.3),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  )
+                ],
               ),
               child: Row(
                 children: [
                   IconButton(
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                     onPressed: () {
                       controller.refreshRoom();
                     },
                     icon: const Icon(
                       Remix.refresh_line,
                       color: Colors.white,
+                      size: 20,
                     ),
                   ),
                   Offstage(
                     offstage: controller.showDanmakuState.value,
                     child: IconButton(
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                       onPressed: () => controller.showDanmakuState.value =
                           !controller.showDanmakuState.value,
                       icon: const ImageIcon(
                         AssetImage('assets/icons/icon_danmaku_open.png'),
-                        size: 24,
+                        size: 20,
                         color: Colors.white,
                       ),
                     ),
@@ -262,32 +288,36 @@ Widget buildFullControls(
                   Offstage(
                     offstage: !controller.showDanmakuState.value,
                     child: IconButton(
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                       onPressed: () => controller.showDanmakuState.value =
                           !controller.showDanmakuState.value,
                       icon: const ImageIcon(
                         AssetImage('assets/icons/icon_danmaku_close.png'),
-                        size: 24,
+                        size: 20,
                         color: Colors.white,
                       ),
                     ),
                   ),
                   IconButton(
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                     onPressed: () {
                       showDanmakuSettings(controller);
                     },
                     icon: const ImageIcon(
                       AssetImage('assets/icons/icon_danmaku_setting.png'),
-                      size: 24,
+                      size: 20,
                       color: Colors.white,
                     ),
                   ),
                   Obx(
                     () => Padding(
-                      padding: const EdgeInsets.only(left: 8.0),
+                      padding: const EdgeInsets.only(left: 6.0),
                       child: Text(
                         controller.liveDuration.value,
                         style:
-                            const TextStyle(fontSize: 14, color: Colors.white),
+                            const TextStyle(fontSize: 12.5, color: Colors.white70),
                       ),
                     ),
                   ),
@@ -295,6 +325,8 @@ Widget buildFullControls(
                   Visibility(
                     visible: !Platform.isAndroid && !Platform.isIOS,
                     child: IconButton(
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                       key: volumeButtonkey,
                       onPressed: () {
                         controller
@@ -302,12 +334,16 @@ Widget buildFullControls(
                       },
                       icon: const Icon(
                         Icons.volume_down,
-                        size: 24,
+                        size: 20,
                         color: Colors.white,
                       ),
                     ),
                   ),
                   TextButton(
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      minimumSize: const Size(0, 32),
+                    ),
                     onPressed: () {
                       showQualitesInfo(controller);
                     },
@@ -315,26 +351,33 @@ Widget buildFullControls(
                       () => Text(
                         controller.currentQualityInfo.value,
                         style:
-                            const TextStyle(color: Colors.white, fontSize: 15),
+                            const TextStyle(color: Colors.white, fontSize: 13),
                       ),
                     ),
                   ),
                   TextButton(
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      minimumSize: const Size(0, 32),
+                    ),
                     onPressed: () {
                       showLinesInfo(controller);
                     },
                     child: Text(
                       controller.currentLineInfo.value,
-                      style: const TextStyle(color: Colors.white, fontSize: 15),
+                      style: const TextStyle(color: Colors.white, fontSize: 13),
                     ),
                   ),
                   IconButton(
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                     onPressed: () {
                       controller.exitCurrentFullScreenMode();
                     },
                     icon: const Icon(
                       Remix.fullscreen_exit_fill,
                       color: Colors.white,
+                      size: 20,
                     ),
                   ),
                 ],
@@ -343,28 +386,34 @@ Widget buildFullControls(
           ),
         ),
 
-        // 右侧锁定
-        Obx(
-          () => AnimatedPositioned(
-            top: 0,
-            bottom: 0,
-            right: controller.showControlsState.value
-                ? padding.right + 12
-                : -(64 + padding.right),
-            duration: const Duration(milliseconds: 200),
-            child: buildLockButton(controller),
+        // 右侧锁定 (仅移动端显示)
+        Visibility(
+          visible: Platform.isAndroid || Platform.isIOS,
+          child: Obx(
+            () => AnimatedPositioned(
+              top: 0,
+              bottom: 0,
+              right: controller.showControlsState.value
+                  ? padding.right + 12
+                  : -(64 + padding.right),
+              duration: const Duration(milliseconds: 200),
+              child: buildLockButton(controller),
+            ),
           ),
         ),
-        // 左侧锁定
-        Obx(
-          () => AnimatedPositioned(
-            top: 0,
-            bottom: 0,
-            left: controller.showControlsState.value
-                ? padding.left + 12
-                : -(64 + padding.right),
-            duration: const Duration(milliseconds: 200),
-            child: buildLockButton(controller),
+        // 左侧锁定 (仅移动端显示)
+        Visibility(
+          visible: Platform.isAndroid || Platform.isIOS,
+          child: Obx(
+            () => AnimatedPositioned(
+              top: 0,
+              bottom: 0,
+              left: controller.showControlsState.value
+                  ? padding.left + 12
+                  : -(64 + padding.right),
+              duration: const Duration(milliseconds: 200),
+              child: buildLockButton(controller),
+            ),
           ),
         ),
         Obx(
