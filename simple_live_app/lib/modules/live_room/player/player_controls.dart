@@ -238,20 +238,23 @@ Widget buildFullControls(
                 : -(64 + padding.bottom),
             duration: const Duration(milliseconds: 220),
             curve: Curves.easeOutCubic,
-            child: _FrostedBar(
-              child: Container(
-                height: 44,
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.45),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: Colors.white.withOpacity(0.15),
-                    width: 0.8,
+            child: Center(
+              child: _FrostedBar(
+                radius: 22,
+                child: Container(
+                  height: 44,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.45),
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.15),
+                      width: 0.8,
+                    ),
                   ),
-                ),
-                child: Row(
-                children: [
+                  child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
                   IconButton(
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
@@ -314,7 +317,7 @@ Widget buildFullControls(
                       ),
                     ),
                   ),
-                  const Expanded(child: Center()),
+                  const SizedBox(width: 24),
                   Visibility(
                     visible: !Platform.isAndroid && !Platform.isIOS,
                     child: IconButton(
@@ -376,6 +379,7 @@ Widget buildFullControls(
                   ],
                 ),
               ),
+            ),
             ),
           ),
         ),
@@ -559,11 +563,12 @@ void _cycleQuality(LiveRoomController controller) {
 /// - 用于全屏播放器顶部/底部控制条，营造 macOS 原生 vibrancy 观感
 class _FrostedBar extends StatelessWidget {
   final Widget child;
-  const _FrostedBar({required this.child});
+  final double radius;
+  const _FrostedBar({required this.child, this.radius = 14});
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(radius),
       child: BackdropFilter(
         filter: ui.ImageFilter.blur(sigmaX: 20, sigmaY: 20),
         child: child,
