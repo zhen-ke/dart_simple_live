@@ -541,7 +541,7 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
   /// 重连当前线路：强制重新打开完整线路列表并跳回当前线路
   /// - 相比 player.jump，player.open 能确保 demuxer 重新拉流
   /// - 保留完整线路列表，使后续 changePlayLine 的 jump 仍可用
-  void retryCurrentLine() async {
+  Future<void> retryCurrentLine() async {
     currentLineInfo.value = "线路${currentLineIndex + 1}";
     errorMsg.value = "";
 
