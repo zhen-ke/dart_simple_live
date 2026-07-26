@@ -259,49 +259,52 @@ class _FollowUserItemState extends State<FollowUserItem> {
                       Positioned(
                         top: 8,
                         left: 8,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.3),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: Colors.white.withOpacity(0.2),
-                              width: 0.5,
+                        child: Obx(() {
+                          bool isLive = widget.item.liveStatus.value == 2;
+                          return Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.3),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: Colors.white.withOpacity(0.2),
+                                width: 0.5,
+                              ),
                             ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(
-                                width: 6,
-                                height: 6,
-                                decoration: BoxDecoration(
-                                  color: isLive ? const Color(0xff34c759) : const Color(0xffaeaeb2),
-                                  shape: BoxShape.circle,
-                                  boxShadow: isLive
-                                      ? [
-                                          BoxShadow(
-                                            color: const Color(0xff34c759).withOpacity(0.8),
-                                            blurRadius: 4,
-                                            spreadRadius: 1,
-                                          )
-                                        ]
-                                      : null,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 6,
+                                  height: 6,
+                                  decoration: BoxDecoration(
+                                    color: isLive ? const Color(0xff34c759) : const Color(0xffaeaeb2),
+                                    shape: BoxShape.circle,
+                                    boxShadow: isLive
+                                        ? [
+                                            BoxShadow(
+                                              color: const Color(0xff34c759).withOpacity(0.8),
+                                              blurRadius: 4,
+                                              spreadRadius: 1,
+                                            )
+                                          ]
+                                        : null,
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(width: 5),
-                              Text(
-                                isLive ? "LIVE" : "离线",
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w600,
-                                  letterSpacing: 0.5,
+                                const SizedBox(width: 5),
+                                Text(
+                                  isLive ? "LIVE" : "离线",
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600,
+                                    letterSpacing: 0.5,
+                                  ),
                                 ),
-                              ),
-                            ],
-                          ),
-                        ),
+                              ],
+                            ),
+                          );
+                        }),
                       ),
                       // Avatar (floating)
                       Positioned(
@@ -373,44 +376,45 @@ class _FollowUserItemState extends State<FollowUserItem> {
                               ],
                             ),
                             const SizedBox(height: 4),
-                            Obx(
-                              () => widget.playing
-                                  ? Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: Theme.of(context).colorScheme.primary.withOpacity(0.12),
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: Text(
-                                        "正在观看",
+                            if (widget.playing)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context).colorScheme.primary.withOpacity(0.12),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  "正在观看",
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Theme.of(context).colorScheme.primary,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              )
+                            else
+                              Obx(
+                                () => widget.item.liveStatus.value == 2 &&
+                                        widget.item.liveStartTime != null
+                                    ? Text(
+                                        '开播了 ${formatLiveDuration(widget.item.liveStartTime)}',
                                         style: TextStyle(
                                           fontSize: 11,
-                                          color: Theme.of(context).colorScheme.primary,
-                                          fontWeight: FontWeight.bold,
+                                          color: isDark
+                                              ? const Color(0xffaeaeb2)
+                                              : const Color(0xff6e6e73),
+                                        ),
+                                      )
+                                    : Text(
+                                        "未开播",
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: isDark
+                                              ? const Color(0xff636366)
+                                              : const Color(0xff8e8e93),
                                         ),
                                       ),
-                                    )
-                                  : widget.item.liveStatus.value == 2 &&
-                                          widget.item.liveStartTime != null
-                                      ? Text(
-                                          '开播了 ${formatLiveDuration(widget.item.liveStartTime)}',
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            color: isDark
-                                                ? const Color(0xffaeaeb2)
-                                                : const Color(0xff6e6e73),
-                                          ),
-                                        )
-                                      : Text(
-                                          "未开播",
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            color: isDark
-                                                ? const Color(0xff636366)
-                                                : const Color(0xff8e8e93),
-                                          ),
-                                        ),
-                            ),
+                              ),
                           ],
                         ),
                       ),

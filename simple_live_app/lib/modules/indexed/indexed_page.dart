@@ -11,18 +11,22 @@ class IndexedPage extends GetView<IndexedController> {
 
   @override
   Widget build(BuildContext context) {
+    bool isDesktop = !Platform.isAndroid && !Platform.isIOS;
+
     return OrientationBuilder(
       builder: (context, orientation) {
+        bool showSidebar = isDesktop || orientation == Orientation.landscape;
+
         return Scaffold(
           body: Row(
             children: [
               Visibility(
-                visible: orientation == Orientation.landscape,
+                visible: showSidebar,
                 child: Obx(
                   () => Theme(
                     data: Theme.of(context).copyWith(
                       navigationRailTheme: NavigationRailThemeData(
-                        backgroundColor: !Platform.isAndroid && !Platform.isIOS
+                        backgroundColor: isDesktop
                             ? (Theme.of(context).brightness == Brightness.light
                                 ? const Color(0xfff5f5f7)
                                 : const Color(0xff1c1c1e))
@@ -44,14 +48,6 @@ class IndexedPage extends GetView<IndexedController> {
                       ),
                     ),
                     child: NavigationRail(
-                      leading: Platform.isMacOS
-                          ? const SizedBox(
-                              height: 32,
-                              child: DragToMoveArea(
-                                child: SizedBox(width: double.infinity, height: 32),
-                              ),
-                            )
-                          : null,
                       selectedIndex: controller.index.value,
                       onDestinationSelected: controller.setIndex,
                       labelType: NavigationRailLabelType.none,
@@ -73,7 +69,7 @@ class IndexedPage extends GetView<IndexedController> {
                   () => Container(
                     decoration: BoxDecoration(
                       border: Border(
-                        left: orientation == Orientation.landscape
+                        left: showSidebar
                             ? BorderSide(
                                 color: Colors.grey.withAlpha(50),
                                 width: 1,
@@ -91,7 +87,7 @@ class IndexedPage extends GetView<IndexedController> {
             ],
           ),
           bottomNavigationBar: Visibility(
-            visible: orientation == Orientation.portrait,
+            visible: !showSidebar,
             child: Obx(
               () => NavigationBar(
                 selectedIndex: controller.index.value,
