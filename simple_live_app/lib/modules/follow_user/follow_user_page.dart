@@ -27,6 +27,7 @@ class FollowUserPage extends GetView<FollowUserController> {
     return Scaffold(
       appBar: AppBar(
         title: const Text("关注用户"),
+        backgroundColor: Colors.transparent,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         actions: [

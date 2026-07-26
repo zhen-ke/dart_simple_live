@@ -25,6 +25,7 @@ class AppStyle {
     fontFamily: Platform.isWindows ? "Microsoft YaHei" : null,
     visualDensity: VisualDensity.standard,
     appBarTheme: AppBarTheme(
+      backgroundColor: Colors.transparent,
       elevation: 0,
       scrolledUnderElevation: 0,
       surfaceTintColor: Colors.transparent,
@@ -71,6 +72,7 @@ class AppStyle {
           fontFamily: Platform.isWindows ? "Microsoft YaHei" : null,
         ),
     appBarTheme: AppBarTheme(
+      backgroundColor: Colors.transparent,
       elevation: 0,
       scrolledUnderElevation: 0,
       surfaceTintColor: Colors.transparent,
