@@ -116,10 +116,72 @@ Widget buildFullControls(
           ),
         ),
 
-        // 顶部
+        // 顶部左侧气泡 (标题与退全屏)
         Obx(
           () => AnimatedPositioned(
             left: padding.left + 16,
+            top: (controller.showControlsState.value &&
+                    !controller.lockControlsState.value)
+                ? (padding.top > 0 ? padding.top + 8 : 12)
+                : -(64 + padding.top),
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            child: _FrostedBar(
+              radius: 22,
+              child: Container(
+                height: 42,
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.of(videoState.context).size.width * 0.5,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.45),
+                  borderRadius: BorderRadius.circular(22),
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.15),
+                    width: 0.8,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                      onPressed: () {
+                        controller.exitCurrentFullScreenMode();
+                      },
+                      icon: const Icon(
+                        Remix.arrow_left_line,
+                        color: Colors.white,
+                        size: 19,
+                      ),
+                      tooltip: "退出全屏",
+                    ),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        "${controller.detail.value?.title ?? ''} - ${controller.detail.value?.userName ?? ''}",
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+
+        // 顶部右侧气泡 (切台/截图/设置)
+        Obx(
+          () => AnimatedPositioned(
             right: padding.right + 16,
             top: (controller.showControlsState.value &&
                     !controller.lockControlsState.value)
@@ -128,100 +190,76 @@ Widget buildFullControls(
             duration: const Duration(milliseconds: 220),
             curve: Curves.easeOutCubic,
             child: _FrostedBar(
+              radius: 22,
               child: Container(
-                height: 44,
-                padding: const EdgeInsets.symmetric(horizontal: 8),
+                height: 42,
+                padding: const EdgeInsets.symmetric(horizontal: 6),
                 decoration: BoxDecoration(
                   color: Colors.black.withOpacity(0.45),
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(22),
                   border: Border.all(
                     color: Colors.white.withOpacity(0.15),
                     width: 0.8,
                   ),
                 ),
                 child: Row(
-                children: [
-                  IconButton(
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                    onPressed: () {
-                      controller.exitCurrentFullScreenMode();
-                    },
-                    icon: const Icon(
-                      Remix.fullscreen_exit_line,
-                      color: Colors.white,
-                      size: 20,
-                    ),
-                    tooltip: "退出全屏",
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      "${controller.detail.value?.title ?? ''} - ${controller.detail.value?.userName ?? ''}",
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                    onPressed: () {
-                      controller.saveScreenshot();
-                    },
-                    icon: const Icon(
-                      Icons.camera_alt_outlined,
-                      color: Colors.white,
-                      size: 20,
-                    ),
-                    tooltip: "截图",
-                  ),
-                  IconButton(
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                    onPressed: () {
-                      showFollowUser(controller);
-                    },
-                    icon: const Icon(
-                      Remix.play_list_2_line,
-                      color: Colors.white,
-                      size: 20,
-                    ),
-                    tooltip: "关注列表",
-                  ),
-                  Visibility(
-                    visible: Platform.isAndroid,
-                    child: IconButton(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
                       padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                      constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
                       onPressed: () {
-                        controller.enablePIP();
+                        showFollowUser(controller);
                       },
                       icon: const Icon(
-                        Icons.picture_in_picture,
+                        Remix.play_list_2_line,
                         color: Colors.white,
-                        size: 20,
+                        size: 19,
+                      ),
+                      tooltip: "关注列表/快捷切台",
+                    ),
+                    IconButton(
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
+                      onPressed: () {
+                        controller.saveScreenshot();
+                      },
+                      icon: const Icon(
+                        Icons.camera_alt_outlined,
+                        color: Colors.white,
+                        size: 19,
+                      ),
+                      tooltip: "截图",
+                    ),
+                    Visibility(
+                      visible: Platform.isAndroid,
+                      child: IconButton(
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
+                        onPressed: () {
+                          controller.enablePIP();
+                        },
+                        icon: const Icon(
+                          Icons.picture_in_picture,
+                          color: Colors.white,
+                          size: 19,
+                        ),
                       ),
                     ),
-                  ),
-                  IconButton(
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                    onPressed: () {
-                      showPlayerSettings(controller);
-                    },
-                    icon: const Icon(
-                      Icons.more_horiz,
-                      color: Colors.white,
-                      size: 20,
+                    IconButton(
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
+                      onPressed: () {
+                        showPlayerSettings(controller);
+                      },
+                      icon: const Icon(
+                        Icons.more_horiz,
+                        color: Colors.white,
+                        size: 19,
+                      ),
+                      tooltip: "设置",
                     ),
-                  ),
-                ],
+                  ],
                 ),
               ),
             ),

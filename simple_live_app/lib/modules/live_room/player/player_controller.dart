@@ -193,7 +193,7 @@ mixin PlayerStateMixin on PlayerMixin {
 
     hideControlsTimer = Timer(
       const Duration(
-        seconds: 5,
+        seconds: 2,
       ),
       hideControls,
     );
