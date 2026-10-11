@@ -215,31 +215,40 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
         currentQuality = middle;
       }
 
-      getPlayUrl();
+      unawaited(getPlayUrl());
     } catch (e) {
       Log.logPrint(e);
       SmartDialog.showToast("无法读取播放清晰度");
     }
   }
 
-  void getPlayUrl() async {
-    playUrls.clear();
-    currentQualityInfo.value = qualites[currentQuality].quality;
-    currentLineInfo.value = "";
-    currentLineIndex = -1;
-    var playUrl = await site.liveSite
-        .getPlayUrls(detail: detail.value!, quality: qualites[currentQuality]);
-    if (playUrl.urls.isEmpty) {
-      SmartDialog.showToast("无法读取播放地址");
-      return;
+  /// 取流并重建播放列表，返回是否成功。
+  /// 取流失败时保留旧线路，供断流重试兜底。
+  Future<bool> getPlayUrl() async {
+    try {
+      var playUrl = await site.liveSite.getPlayUrls(
+          detail: detail.value!, quality: qualites[currentQuality]);
+      if (playUrl.urls.isEmpty) {
+        SmartDialog.showToast("无法读取播放地址");
+        return false;
+      }
+      playUrls.clear();
+      currentQualityInfo.value = qualites[currentQuality].quality;
+      currentLineInfo.value = "";
+      currentLineIndex = -1;
+      playUrls.value = playUrl.urls;
+      playHeaders = playUrl.headers;
+      currentLineIndex = 0;
+      currentLineInfo.value = "线路${currentLineIndex + 1}";
+      //重置错误次数
+      mediaErrorRetryCount = 0;
+      setPlayer();
+      return true;
+    } catch (e) {
+      Log.logPrint(e);
+      SmartDialog.showToast("读取播放地址失败");
+      return false;
     }
-    playUrls.value = playUrl.urls;
-    playHeaders = playUrl.headers;
-    currentLineIndex = 0;
-    currentLineInfo.value = "线路${currentLineIndex + 1}";
-    //重置错误次数
-    mediaErrorRetryCount = 0;
-    setPlayer();
   }
 
   void changePlayLine(int index) {
@@ -272,7 +281,18 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     Log.d("$reason，${delay.inMilliseconds}ms 后尝试第${mediaErrorRetryCount + 1}次刷新");
     await Future.delayed(delay);
     mediaErrorRetryCount += 1;
-    await setPlayer();
+    if (site.id == Constant.kDouyu) {
+      // 斗鱼签名带时间戳、播放地址带 expire 时效：重试需重新取流，
+      // 重放旧地址会被服务端掐断。getPlayUrl 内部会重置重试计数，需还原
+      final retryCount = mediaErrorRetryCount;
+      final ok = await getPlayUrl();
+      if (!ok && playUrls.isNotEmpty && currentLineIndex >= 0) {
+        await setPlayer();
+      }
+      mediaErrorRetryCount = retryCount;
+    } else {
+      await setPlayer();
+    }
     return true;
   }
 

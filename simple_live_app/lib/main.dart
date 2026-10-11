@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -13,7 +14,9 @@ import 'package:media_kit/media_kit.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:simple_live_app/app/app_style.dart';
+import 'package:simple_live_app/app/constant.dart';
 import 'package:simple_live_app/app/controller/app_settings_controller.dart';
+import 'package:simple_live_app/app/sites.dart';
 import 'package:simple_live_app/app/log.dart';
 import 'package:simple_live_app/app/utils.dart';
 import 'package:simple_live_app/app/utils/listen_fourth_button.dart';
@@ -135,6 +138,19 @@ Future initServices() async {
   Log.d("Init LocalStorage Service");
   await Get.put(LocalStorageService()).init();
   await Get.put(DBService()).init();
+
+  // 斗鱼匿名设备号：每设备生成一次并持久化，所有用户共用同一个 did
+  // 会被风控掐流；签名与 dy_did/acf_did Cookie 均使用该 did
+  var douyuDid = LocalStorageService.instance
+      .getValue<String>(LocalStorageService.kDouyuDeviceId, "");
+  if (douyuDid.isEmpty) {
+    var random = Random.secure();
+    douyuDid = List.generate(32, (_) => random.nextInt(16).toRadixString(16))
+        .join();
+    unawaited(LocalStorageService.instance
+        .setValue(LocalStorageService.kDouyuDeviceId, douyuDid));
+  }
+  (Sites.allSites[Constant.kDouyu]!.liveSite as DouyuSite).deviceId = douyuDid;
   //初始化设置控制器
   Get.put(AppSettingsController());
 

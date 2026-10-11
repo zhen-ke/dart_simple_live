@@ -105,6 +105,9 @@ class LocalStorageService extends GetxService {
   /// 哔哩哔哩cookie
   static const String kBilibiliCookie = "BilibiliCookie";
 
+  /// 斗鱼匿名设备号（32位hex，每设备持久化一份，避免共享did被风控掐流）
+  static const String kDouyuDeviceId = "DouyuDeviceId";
+
   ///主题色
   static const String kStyleColor = "kStyleColor";
 
