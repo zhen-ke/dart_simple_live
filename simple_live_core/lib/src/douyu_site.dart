@@ -16,7 +16,9 @@ import 'package:simple_live_core/src/model/live_search_result.dart';
 import 'package:simple_live_core/src/model/live_room_detail.dart';
 import 'package:simple_live_core/src/model/live_play_quality.dart';
 import 'package:simple_live_core/src/model/live_category_result.dart';
+import 'package:crypto/crypto.dart';
 import 'package:html_unescape/html_unescape.dart';
+import 'package:simple_live_core/src/common/core_log.dart';
 import 'package:simple_live_core/src/scripts/douyu_sign.dart';
 
 class DouyuSite implements LiveSite {
@@ -31,6 +33,79 @@ class DouyuSite implements LiveSite {
 
   /// 进程内兜底设备号：App 层未注入时也保证同一进程内身份稳定。
   static final String _processFallbackDid = generateRandomString(32);
+
+  /// V1 加密包缓存：enc_data 由服务端下发（websec/getEncryption），
+  /// 客户端只计算 auth 的 MD5 链；缓存有效期取 expire_at
+  Map<String, dynamic>? _encryptionData;
+  String? _encryptionDid;
+
+  /// 取 V1 加密包（官方 web-encrypt.js 的 _internalUpdateKey 同款逻辑）
+  Future<Map<String, dynamic>> _getEncryptionData() async {
+    final nowSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    var cached = _encryptionData;
+    if (cached != null &&
+        _encryptionDid == _deviceDid &&
+        ((cached["expire_at"] as num?)?.toInt() ?? 0) > nowSec + 60) {
+      return cached;
+    }
+    var result = await HttpClient.instance.getJson(
+      "https://www.douyu.com/wgapi/livenc/liveweb/websec/getEncryption",
+      queryParameters: {"did": _deviceDid},
+      header: _requestHeaders,
+    );
+    if (result["error"] != 0) {
+      throw CoreError("斗鱼加密包获取失败:${result["msg"]}");
+    }
+    _encryptionData = result["data"];
+    _encryptionDid = _deviceDid;
+    return _encryptionData!;
+  }
+
+  /// V1 auth 计算（官方 web-encrypt.js 的 sign(type:"stream") 同款）：
+  /// u = rand_str；循环 enc_time 次 u = md5(u + key)；
+  /// 最后 u = md5(u + key + rid + tt)，is_special=1 时尾段为空串
+  String _computeV1Auth(Map<String, dynamic> enc, String rid, int tt) {
+    final key = enc["key"].toString();
+    var u = enc["rand_str"].toString();
+    for (var i = 0; i < ((enc["enc_time"] as num?)?.toInt() ?? 1); i++) {
+      u = md5.convert(utf8.encode(u + key)).toString();
+    }
+    final tail = enc["is_special"] == 1 ? "" : "$rid$tt";
+    return md5.convert(utf8.encode(u + key + tail)).toString();
+  }
+
+  /// 统一取流请求：先走老 getH5Play 接口，失败/异常时兜底 getH5PlayV1
+  /// （官方前端已全面迁移 V1；响应 data 结构与 V0 一致）
+  Future<Map> _postH5Play(
+      String roomId, String args, String cdn, int rate) async {
+    try {
+      var result = await HttpClient.instance.postJson(
+        "https://www.douyu.com/lapi/live/getH5Play/$roomId",
+        data: args,
+        header: {..._requestHeaders, 'referer': 'https://www.douyu.com/$roomId'},
+        formUrlEncoded: true,
+      );
+      if (result["error"] == null || result["error"].toString() == "0") {
+        return result;
+      }
+      CoreLog.w("getH5Play失败(${result["error"]}:${result["msg"]})，尝试getH5PlayV1");
+    } catch (e) {
+      CoreLog.w("getH5Play异常:$e，尝试getH5PlayV1");
+    }
+    final enc = await _getEncryptionData();
+    final tt = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final auth = _computeV1Auth(enc, roomId, tt);
+    var postData =
+        "enc_data=${Uri.encodeComponent(enc["enc_data"].toString())}"
+        "&tt=$tt&did=$_deviceDid&auth=$auth"
+        "&cdn=$cdn&rate=$rate&ver=Douyu_new&iar=0&ive=0&sov=0&hevc=1&fa=0";
+    return HttpClient.instance.postJson(
+      "https://www.douyu.com/lapi/live/getH5PlayV1/$roomId",
+      data: postData,
+      header: {..._requestHeaders, 'referer': 'https://www.douyu.com/$roomId'},
+      formUrlEncoded: true,
+    );
+  }
 
   /// 从 cookie 字符串中解析指定键的值
   String _cookieValue(String key) {
@@ -157,12 +232,7 @@ class DouyuSite implements LiveSite {
     var data = await _getFreshPlayArgs(detail.roomId, fallback: detail.data);
     data += "&cdn=&rate=-1&ver=Douyu_223061205&iar=1&ive=1&hevc=0&fa=0";
     List<LivePlayQuality> qualities = [];
-    var result = await HttpClient.instance.postJson(
-      "https://www.douyu.com/lapi/live/getH5Play/${detail.roomId}",
-      data: data,
-      header: _requestHeaders,
-      formUrlEncoded: true,
-    );
+    var result = await _postH5Play(detail.roomId, data, "", -1);
     if (result["error"] != null && result["error"].toString() != "0") {
       throw CoreError("斗鱼播放质量请求失败：${result["msg"] ?? result["error"]}");
     }
@@ -220,12 +290,7 @@ class DouyuSite implements LiveSite {
     String cdn,
   ) async {
     args += "&cdn=$cdn&rate=$rate";
-    var result = await HttpClient.instance.postJson(
-      "https://www.douyu.com/lapi/live/getH5Play/$roomId",
-      data: args,
-      header: {..._requestHeaders, 'referer': 'https://www.douyu.com/$roomId'},
-      formUrlEncoded: true,
-    );
+    var result = await _postH5Play(roomId, args, cdn, rate);
     if (result["error"] != null && result["error"].toString() != "0") {
       throw CoreError("斗鱼播放地址请求失败：${result["msg"] ?? result["error"]}");
     }
