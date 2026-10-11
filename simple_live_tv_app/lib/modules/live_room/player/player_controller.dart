@@ -54,7 +54,9 @@ mixin PlayerMixin {
     await pp.setProperty('network-timeout', '15');
     await pp.setProperty(
       'stream-lavf-opts',
-      'reconnect_streamed=1,reconnect_at_eof=1,reconnect_delay_max=2',
+      // reconnect_max_retries 设界：死链（如斗鱼 token 过期）不应被
+      // mpv 无限静默重连，要快速把错误抛给上层重新取流
+      'reconnect_streamed=1,reconnect_at_eof=1,reconnect_delay_max=2,reconnect_max_retries=3',
     );
   }
 

@@ -82,23 +82,35 @@ class DouyuSite implements LiveSite {
     return md5.convert(utf8.encode(u + key + tail)).toString();
   }
 
+  /// V0 接口一旦失败，本会话直接走 V1：避免每次取流都白等
+  /// 一个大概率必败的 RTT（官方前端已全面迁移 V1）
+  bool _preferV1 = false;
+
   /// 统一取流请求：先走老 getH5Play 接口，失败/异常时兜底 getH5PlayV1
   /// （官方前端已全面迁移 V1；响应 data 结构与 V0 一致）
   Future<Map> _postH5Play(
       String roomId, String args, String cdn, int rate) async {
-    try {
-      var result = await HttpClient.instance.postJson(
-        "https://www.douyu.com/lapi/live/getH5Play/$roomId",
-        data: args,
-        header: {..._requestHeaders, 'referer': 'https://www.douyu.com/$roomId'},
-        formUrlEncoded: true,
-      );
-      if (result["error"] == null || result["error"].toString() == "0") {
-        return result;
+    if (!_preferV1) {
+      try {
+        var result = await HttpClient.instance.postJson(
+          "https://www.douyu.com/lapi/live/getH5Play/$roomId",
+          data: args,
+          header: {
+            ..._requestHeaders,
+            'referer': 'https://www.douyu.com/$roomId'
+          },
+          formUrlEncoded: true,
+        );
+        if (result["error"] == null || result["error"].toString() == "0") {
+          return result;
+        }
+        CoreLog.w(
+            "getH5Play失败(${result["error"]}:${result["msg"]})，尝试getH5PlayV1");
+        _preferV1 = true;
+      } catch (e) {
+        CoreLog.w("getH5Play异常:$e，尝试getH5PlayV1");
+        _preferV1 = true;
       }
-      CoreLog.w("getH5Play失败(${result["error"]}:${result["msg"]})，尝试getH5PlayV1");
-    } catch (e) {
-      CoreLog.w("getH5Play异常:$e，尝试getH5PlayV1");
     }
     final enc = await _getEncryptionData();
     final tt = DateTime.now().millisecondsSinceEpoch ~/ 1000;
@@ -237,7 +249,10 @@ class DouyuSite implements LiveSite {
   Future<List<LivePlayQuality>> getPlayQualites({
     required LiveRoomDetail detail,
   }) async {
-    var data = await _getFreshPlayArgs(detail.roomId, fallback: detail.data);
+    // V1 模式不需要 V0 签名参数：跳过 homeH5Enc+签名，省一个 RTT
+    var data = _preferV1
+        ? ""
+        : await _getFreshPlayArgs(detail.roomId, fallback: detail.data);
     data += "&cdn=&rate=-1&ver=Douyu_223061205&iar=1&ive=1&hevc=0&fa=0";
     List<LivePlayQuality> qualities = [];
     var result = await _postH5Play(detail.roomId, data, "", -1);
@@ -278,7 +293,10 @@ class DouyuSite implements LiveSite {
   }) async {
     // 签名参数带时间戳，在房间长时间停留后会过期；每次取流都重新拉
     // homeH5Enc 重新签名，而不是复用 getRoomDetail 时缓存的旧签名。
-    var args = await _getFreshPlayArgs(detail.roomId, fallback: detail.data);
+    // V1 模式不需要 V0 签名参数。
+    var args = _preferV1
+        ? ""
+        : await _getFreshPlayArgs(detail.roomId, fallback: detail.data);
     var data = quality.data as DouyuPlayData;
 
     // 各 CDN 并行取地址：单条失败只丢该线路，不影响整体；
@@ -313,9 +331,27 @@ class DouyuSite implements LiveSite {
     return "${data["rtmp_url"]}/${HtmlUnescape().convert(data["rtmp_live"].toString())}";
   }
 
+  /// 签名参数缓存：homeH5Enc 拉脚本+签名不依赖房间详情，
+  /// 进房时可与 getRoomDetail 并行预热，首帧少等一个 RTT。
+  /// 签名含时间戳，超过 TTL 视为过期重新签
+  final Map<String, ({String args, DateTime time})> _freshArgsCache = {};
+  static const _freshArgsTtl = Duration(seconds: 60);
+
+  /// 预热播放签名：进房时与 getRoomDetail 并行发起
+  Future<void> warmPlayArgs(String roomId) async {
+    try {
+      await _getFreshPlayArgs(roomId, fallback: "");
+    } catch (_) {}
+  }
+
   /// 每次取流前重新拉取加密脚本并签名，返回带新时间戳的播放参数。
   /// 失败时回退到 [fallback]（getRoomDetail 时缓存的签名）。
   Future<String> _getFreshPlayArgs(String roomId, {Object? fallback}) async {
+    var cached = _freshArgsCache[roomId];
+    if (cached != null &&
+        DateTime.now().difference(cached.time) < _freshArgsTtl) {
+      return cached.args;
+    }
     try {
       var jsEncResult = await HttpClient.instance.getText(
         "https://www.douyu.com/swf_api/homeH5Enc?rids=$roomId",
@@ -331,6 +367,7 @@ class DouyuSite implements LiveSite {
       if (script is String && script.isNotEmpty) {
         var signed = DouyuSign.getSign(script, roomId, _deviceDid);
         if (signed.isNotEmpty) {
+          _freshArgsCache[roomId] = (args: signed, time: DateTime.now());
           return signed;
         }
       }

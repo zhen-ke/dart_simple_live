@@ -392,6 +392,10 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
       error = null;
       update();
       addSysMsg("正在读取直播间信息");
+      // 斗鱼预热播放签名：与 getRoomDetail 并行，首帧省一个 RTT
+      if (site.liveSite is DouyuSite) {
+        unawaited((site.liveSite as DouyuSite).warmPlayArgs(roomId));
+      }
       detail.value = await site.liveSite.getRoomDetail(roomId: roomId);
       if (_roomClosed) return;
       _reResolveTimes.clear();
