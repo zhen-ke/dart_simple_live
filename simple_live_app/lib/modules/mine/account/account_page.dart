@@ -4,6 +4,7 @@ import 'package:simple_live_app/app/app_style.dart';
 import 'package:simple_live_app/modules/mine/account/account_controller.dart';
 import 'package:simple_live_app/services/bilibili_account_service.dart';
 import 'package:simple_live_app/services/douyin_account_service.dart';
+import 'package:simple_live_app/services/douyu_account_service.dart';
 
 class AccountPage extends GetView<AccountController> {
   const AccountPage({Key? key}) : super(key: key);
@@ -38,16 +39,22 @@ class AccountPage extends GetView<AccountController> {
               onTap: controller.bilibiliTap,
             ),
           ),
-          ListTile(
-            leading: Image.asset(
-              'assets/images/douyu.png',
-              width: 36,
-              height: 36,
+          Obx(
+            () => ListTile(
+              leading: Image.asset(
+                'assets/images/douyu.png',
+                width: 36,
+                height: 36,
+              ),
+              title: const Text("斗鱼直播"),
+              subtitle: Text(DouyuAccountService.instance.hasCookie.value
+                  ? "已配置 Cookie（${DouyuAccountService.instance.cookie.length} 字符）"
+                  : "未配置，匿名高画质可能约 10 分钟断流"),
+              trailing: DouyuAccountService.instance.hasCookie.value
+                  ? const Icon(Icons.delete_outline)
+                  : const Icon(Icons.chevron_right),
+              onTap: controller.douyuTap,
             ),
-            title: const Text("斗鱼直播"),
-            subtitle: const Text("无需登录"),
-            enabled: false,
-            trailing: const Icon(Icons.chevron_right),
           ),
           ListTile(
             leading: Image.asset(

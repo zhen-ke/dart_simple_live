@@ -20,6 +20,10 @@ import 'package:html_unescape/html_unescape.dart';
 import 'package:simple_live_core/src/scripts/douyu_sign.dart';
 
 class DouyuSite implements LiveSite {
+  /// 可选的登录 Cookie。匿名播放仍支持，但匿名高画质拉流可能被
+  /// 服务端限时掐断（约十分钟左右）。
+  String cookie = "";
+
   /// 本设备持久化的匿名设备号（32 位 hex），由 App 层生成并注入。
   /// 匿名请求不再共用写死的假 did（千万用户共享一个"设备"是风控
   /// 掐流的典型特征），签名与 dy_did/acf_did Cookie 保持一致。
@@ -28,13 +32,44 @@ class DouyuSite implements LiveSite {
   /// 进程内兜底设备号：App 层未注入时也保证同一进程内身份稳定。
   static final String _processFallbackDid = generateRandomString(32);
 
-  /// 参与签名的设备号
-  String get _deviceDid =>
-      deviceId.trim().isNotEmpty ? deviceId.trim() : _processFallbackDid;
+  /// 从 cookie 字符串中解析指定键的值
+  String _cookieValue(String key) {
+    for (var part in cookie.split(';')) {
+      var kv = part.trim().split('=');
+      if (kv.length >= 2 && kv[0] == key) {
+        return kv.sublist(1).join('=');
+      }
+    }
+    return "";
+  }
 
-  /// 请求 Cookie：补上与签名一致的 dy_did/acf_did，保证匿名请求也带
-  /// 稳定设备身份。
-  String get _deviceCookieHeader => "dy_did=$_deviceDid; acf_did=$_deviceDid";
+  /// 参与签名的设备号：优先登录 cookie 的 acf_did（与请求 Cookie
+  /// 身份一致），其次 App 注入的持久化 deviceId，最后进程内随机值。
+  String get _deviceDid {
+    final fromCookie = _cookieValue("acf_did");
+    if (fromCookie.isNotEmpty) {
+      return fromCookie;
+    }
+    return deviceId.trim().isNotEmpty ? deviceId.trim() : _processFallbackDid;
+  }
+
+  /// 组装请求 Cookie：登录 cookie 原样保留；缺失 dy_did/acf_did 时补上
+  /// 与签名一致的设备号，保证匿名请求也带稳定设备身份。
+  String get _deviceCookieHeader {
+    final trimmed = cookie.trim();
+    final did = _deviceDid;
+    var parts = <String>[];
+    if (trimmed.isNotEmpty) {
+      parts.add(trimmed);
+    }
+    if (_cookieValue("dy_did").isEmpty) {
+      parts.add("dy_did=$did");
+    }
+    if (_cookieValue("acf_did").isEmpty) {
+      parts.add("acf_did=$did");
+    }
+    return parts.join("; ");
+  }
 
   Map<String, String> get _requestHeaders => {
         'referer': 'https://www.douyu.com/',

@@ -128,6 +128,9 @@ class LocalStorageService extends GetxService {
   /// 斗鱼匿名设备号（32位hex，每设备持久化一份，避免共享did被风控掐流）
   static const String kDouyuDeviceId = "DouyuDeviceId";
 
+  /// 斗鱼cookie
+  static const String kDouyuCookie = "DouyuCookie";
+
   ///主题色
   static const String kStyleColor = "kStyleColor";
 

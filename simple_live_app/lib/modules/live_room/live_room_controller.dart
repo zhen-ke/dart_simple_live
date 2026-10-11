@@ -394,6 +394,7 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
       addSysMsg("正在读取直播间信息");
       detail.value = await site.liveSite.getRoomDetail(roomId: roomId);
       if (_roomClosed) return;
+      _reResolveTimes.clear();
 
       if (site.id == Constant.kDouyin) {
         // 1.6.0之前收藏的WebRid
@@ -611,26 +612,59 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     if (await _retryWithBackoff("播放结束")) return;
 
     Log.d("播放结束");
-    // 遍历线路，如果全部链接都断开就是直播结束了
-    if (playUrls.length - 1 == currentLineIndex) {
-      liveStatus.value = false;
-    } else {
-      changePlayLine(currentLineIndex + 1);
-    }
+    // 遍历线路，如果全部链接都断开先核实真实开播状态再判定
+    await _playbackRetriesExhausted();
   }
 
   int mediaErrorRetryCount = 0;
+
+  /// 断流后"仍在播→重新取流"的兜底记账：防止周期性被掐流的
+  /// 房间无限重试空转
+  final List<DateTime> _reResolveTimes = [];
+  static const int _maxReResolvePerWindow = 6;
+  static const Duration _reResolveWindow = Duration(minutes: 10);
+
+  bool get _reResolveStormExceeded {
+    final cutoff = DateTime.now().subtract(_reResolveWindow);
+    _reResolveTimes.removeWhere((t) => t.isBefore(cutoff));
+    return _reResolveTimes.length >= _maxReResolvePerWindow;
+  }
+
+  /// 重试耗尽后的兜底：先核实真实开播状态，仍在播就重置计数
+  /// 重新取流再试一轮；确实下播才标记未开播。
+  /// "重试耗尽"不等于"下播"——服务端掐流后重试同样会被掐，
+  /// 直接判下播会误报（斗鱼匿名高画质约十分钟断流就是这种情况）
+  Future<void> _playbackRetriesExhausted({String? error}) async {
+    if (playUrls.length - 1 != currentLineIndex) {
+      changePlayLine(currentLineIndex + 1);
+      return;
+    }
+    var stillLive = false;
+    try {
+      stillLive = await site.liveSite.getLiveStatus(roomId: roomId);
+    } catch (_) {}
+    if (stillLive && !_reResolveStormExceeded) {
+      _reResolveTimes.add(DateTime.now());
+      Log.d("重试耗尽但房间仍在播，重新取流再试一轮");
+      currentLineIndex = 0;
+      mediaErrorRetryCount = 0;
+      if (await getPlayUrl()) {
+        return;
+      }
+    }
+    liveStatus.value = false;
+    if (error != null) {
+      errorMsg.value = "播放失败";
+      SmartDialog.showToast("播放失败:$error");
+    }
+  }
+
   @override
   void mediaError(String error) async {
     super.mediaEnd();
     if (await _retryWithBackoff("播放失败")) return;
 
-    if (playUrls.length - 1 == currentLineIndex) {
-      errorMsg.value = "播放失败";
-      SmartDialog.showToast("播放失败:$error");
-    } else {
-      changePlayLine(currentLineIndex + 1);
-    }
+    await _playbackRetriesExhausted(error: error);
   }
 
   /// 读取SC

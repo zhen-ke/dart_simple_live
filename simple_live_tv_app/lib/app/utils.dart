@@ -96,6 +96,68 @@ class Utils {
     return result ?? false;
   }
 
+  /// 文本编辑弹窗
+  /// - `content` 编辑框默认内容
+  /// - `title` 弹窗标题
+  /// - `hintText` 输入提示
+  /// 返回输入内容；取消返回 null
+  static Future<String?> showEditTextDialog(
+    String content, {
+    String title = '',
+    String? hintText,
+  }) async {
+    final textEditingController = TextEditingController(text: content);
+    var result = await Get.dialog(
+      AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: AppStyle.radius16,
+        ),
+        titlePadding: AppStyle.edgeInsetsA24.copyWith(left: 48.w, right: 48.w),
+        contentPadding:
+            AppStyle.edgeInsetsA24.copyWith(left: 48.w, right: 48.w),
+        insetPadding: AppStyle.edgeInsetsA16,
+        actionsPadding: AppStyle.edgeInsetsA16,
+        surfaceTintColor: Colors.transparent,
+        backgroundColor: Get.theme.cardColor,
+        title: Text(
+          title,
+          style: AppStyle.titleStyleWhite,
+        ),
+        content: Padding(
+          padding: AppStyle.edgeInsetsV12,
+          child: TextField(
+            controller: textEditingController,
+            autofocus: true,
+            maxLines: 5,
+            minLines: 1,
+            decoration: InputDecoration(
+              border: const OutlineInputBorder(),
+              hintText: hintText ?? title,
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: (() => Get.back(result: null)),
+            child: Text(
+              "取消",
+              style: AppStyle.textStyleWhite,
+            ),
+          ),
+          TextButton(
+            autofocus: true,
+            onPressed: (() => Get.back(result: textEditingController.text)),
+            child: Text(
+              "确定",
+              style: AppStyle.textStyleWhite,
+            ),
+          ),
+        ],
+      ),
+    );
+    return result;
+  }
+
   /// 提示弹窗
   /// - `content` 内容
   /// - `title` 弹窗标题

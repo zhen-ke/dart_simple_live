@@ -7,6 +7,7 @@ import 'package:simple_live_app/app/utils.dart';
 import 'package:simple_live_app/routes/route_path.dart';
 import 'package:simple_live_app/services/bilibili_account_service.dart';
 import 'package:simple_live_app/services/douyin_account_service.dart';
+import 'package:simple_live_app/services/douyu_account_service.dart';
 import 'package:simple_live_core/simple_live_core.dart';
 
 class AccountController extends GetxController {
@@ -77,6 +78,68 @@ class AccountController extends GetxController {
     }
     BiliBiliAccountService.instance.setCookie(cookie);
     await BiliBiliAccountService.instance.loadUserInfo();
+  }
+
+  void douyuTap() {
+    final account = DouyuAccountService.instance;
+    final controller = TextEditingController(text: account.cookie);
+    Get.dialog(
+      AlertDialog(
+        title: const Text("配置斗鱼 Cookie"),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                "匿名用户的斗鱼高画质可能约 10 分钟后断流；粘贴登录后的 www.douyu.com 完整 Cookie 可恢复高画质长期播放。Cookie 只保存在本机。",
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                maxLines: 6,
+                decoration: const InputDecoration(
+                  labelText: "Cookie",
+                  hintText: "粘贴 www.douyu.com 的完整 Cookie",
+                  alignLabelWithHint: true,
+                  floatingLabelBehavior: FloatingLabelBehavior.always,
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          if (account.hasCookie.value)
+            TextButton(
+              onPressed: () {
+                account.clearCookie();
+                Get.back();
+                SmartDialog.showToast("已清除斗鱼 Cookie，将使用匿名播放");
+              },
+              child: const Text("清除"),
+            ),
+          TextButton(
+            onPressed: () => Get.back(),
+            child: const Text("取消"),
+          ),
+          TextButton(
+            onPressed: () {
+              final cookie = controller.text
+                  .replaceAll(RegExp(r'[\r\n\t]'), '')
+                  .trim();
+              account.setCookie(cookie);
+              Get.back();
+              SmartDialog.showToast(
+                cookie.isEmpty ? "已清除斗鱼 Cookie，将使用匿名播放" : "斗鱼 Cookie 已保存",
+              );
+            },
+            child: const Text("保存"),
+          ),
+        ],
+      ),
+    ).whenComplete(controller.dispose);
   }
 
   void douyinTap() async {

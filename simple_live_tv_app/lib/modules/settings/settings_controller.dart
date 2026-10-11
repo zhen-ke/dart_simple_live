@@ -5,6 +5,8 @@ import 'package:simple_live_tv_app/app/controller/base_controller.dart';
 import 'package:simple_live_tv_app/app/utils.dart';
 import 'package:simple_live_tv_app/routes/app_navigation.dart';
 import 'package:simple_live_tv_app/services/bilibili_account_service.dart';
+import 'package:simple_live_tv_app/services/douyu_account_service.dart';
+import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 
 class SettingsController extends BaseController
     with GetTickerProviderStateMixin {
@@ -52,6 +54,7 @@ class SettingsController extends BaseController
   var updateFollowThreadFocusNode = AppFocusNode();
 
   var bilibiliFoucsNode = AppFocusNode();
+  var douyuFoucsNode = AppFocusNode();
   var versionFocusNode = AppFocusNode();
   void bilibiliTap() async {
     if (BiliBiliAccountService.instance.logined.value) {
@@ -62,6 +65,24 @@ class SettingsController extends BaseController
     } else {
       AppNavigator.toBiliBiliLogin();
     }
+  }
+
+  void douyuTap() async {
+    final account = DouyuAccountService.instance;
+    final value = await Utils.showEditTextDialog(
+      account.cookie,
+      title: "斗鱼 Cookie",
+      hintText: "粘贴已登录 www.douyu.com 的完整 Cookie，留空使用匿名播放",
+    );
+    if (value == null) {
+      return;
+    }
+    final cookie = value.replaceAll(RegExp(r'[\r\n\t]'), '').trim();
+    account.setCookie(cookie);
+    SmartDialog.showToast(
+      account.hasCookie.value ? "斗鱼 Cookie 已保存" : "已清除斗鱼 Cookie，将使用匿名播放",
+    );
+    update();
   }
 
 }
