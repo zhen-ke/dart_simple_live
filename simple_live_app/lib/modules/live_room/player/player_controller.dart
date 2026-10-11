@@ -1066,6 +1066,9 @@ class PlayerController extends BaseController
       exitSmallWindow();
     }
     disposeStream();
+    // 先停流再做平台侧清理：resetSystem 的方向/亮度调用耗时较长，
+    // 不先停流会在页面销毁后继续出声
+    await player.stop();
     disposeDanmakuController();
     _keyboardVolumeTipTimer?.cancel();
     _playerFocusNode?.dispose();

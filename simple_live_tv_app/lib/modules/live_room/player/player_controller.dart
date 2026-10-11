@@ -298,6 +298,9 @@ class PlayerController extends BaseController
   void onClose() async {
     Log.w("播放器关闭");
     disposeStream();
+    // 先停流再做平台侧清理：resetSystem 的平台调用耗时较长，
+    // 不先停流会在页面销毁后继续出声
+    await player.stop();
     disposeDanmakuController();
     await resetSystem();
     await player.dispose();
