@@ -38,16 +38,24 @@ class DouyuSite implements LiveSite {
   /// 客户端只计算 auth 的 MD5 链；缓存有效期取 expire_at
   Map<String, dynamic>? _encryptionData;
   String? _encryptionDid;
+  Future<Map<String, dynamic>>? _encryptionFuture;
 
-  /// 取 V1 加密包（官方 web-encrypt.js 的 _internalUpdateKey 同款逻辑）
-  Future<Map<String, dynamic>> _getEncryptionData() async {
+  /// 取 V1 加密包（官方 web-encrypt.js 的 _internalUpdateKey 同款逻辑）；
+  /// 并发调用共享同一次请求
+  Future<Map<String, dynamic>> _getEncryptionData() {
     final nowSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     var cached = _encryptionData;
     if (cached != null &&
         _encryptionDid == _deviceDid &&
         ((cached["expire_at"] as num?)?.toInt() ?? 0) > nowSec + 60) {
-      return cached;
+      return Future.value(cached);
     }
+    return _encryptionFuture ??= _fetchEncryptionData().whenComplete(() {
+      _encryptionFuture = null;
+    });
+  }
+
+  Future<Map<String, dynamic>> _fetchEncryptionData() async {
     var result = await HttpClient.instance.getJson(
       "https://www.douyu.com/wgapi/livenc/liveweb/websec/getEncryption",
       queryParameters: {"did": _deviceDid},
@@ -273,14 +281,18 @@ class DouyuSite implements LiveSite {
     var args = await _getFreshPlayArgs(detail.roomId, fallback: detail.data);
     var data = quality.data as DouyuPlayData;
 
-    List<String> urls = [];
-    for (var item in data.cdns) {
-      var url = await getPlayUrl(detail.roomId, args, data.rate, item);
-      if (url.isNotEmpty) {
-        urls.add(url);
-      }
-    }
-    return LivePlayUrl(urls: urls);
+    // 各 CDN 并行取地址：单条失败只丢该线路，不影响整体；
+    // 比串行少等 (n-1) 个 RTT
+    final results = await Future.wait(
+      data.cdns.map((item) async {
+        try {
+          return await getPlayUrl(detail.roomId, args, data.rate, item);
+        } catch (_) {
+          return "";
+        }
+      }),
+    );
+    return LivePlayUrl(urls: results.where((u) => u.isNotEmpty).toList());
   }
 
   Future<String> getPlayUrl(

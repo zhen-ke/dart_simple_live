@@ -28,6 +28,9 @@ class NetImage extends StatelessWidget {
     if (pic.startsWith("//")) {
       pic = 'https:$pic';
     }
+    // 按显示尺寸降采样解码：列表页封面若按原图分辨率解码，
+    // 几十张图就能吃掉上百 MB 内存
+    final dpr = MediaQuery.of(context).devicePixelRatio;
     return ClipRRect(
       borderRadius: BorderRadius.circular(borderRadius),
       child: ExtendedImage.network(
@@ -35,6 +38,10 @@ class NetImage extends StatelessWidget {
         fit: fit,
         height: height,
         width: width,
+        memCacheWidth:
+            width?.isFinite == true ? (width! * dpr).ceil() : null,
+        memCacheHeight:
+            height?.isFinite == true ? (height! * dpr).ceil() : null,
         shape: BoxShape.rectangle,
         borderRadius: BorderRadius.circular(borderRadius),
         loadStateChanged: (e) {
