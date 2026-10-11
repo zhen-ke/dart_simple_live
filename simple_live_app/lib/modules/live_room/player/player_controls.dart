@@ -94,6 +94,7 @@ Widget buildFullControls(
             onVerticalDragUpdate: controller.onVerticalDragUpdate,
             onVerticalDragEnd: controller.onVerticalDragEnd,
             child: MouseRegion(
+              onEnter: controller.onEnter,
               onHover: (PointerHoverEvent event) {
                 controller.onHover(event, videoState.context);
               },
@@ -128,6 +129,7 @@ Widget buildFullControls(
             curve: Curves.easeOutCubic,
             child: _FrostedBar(
               radius: 22,
+              controller: controller,
               child: Container(
                 height: 42,
                 padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -191,6 +193,7 @@ Widget buildFullControls(
             curve: Curves.easeOutCubic,
             child: _FrostedBar(
               radius: 22,
+              controller: controller,
               child: Container(
                 height: 42,
                 padding: const EdgeInsets.symmetric(horizontal: 6),
@@ -279,6 +282,7 @@ Widget buildFullControls(
             child: Center(
               child: _FrostedBar(
                 radius: 22,
+                controller: controller,
                 child: Container(
                   height: 44,
                   padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -599,17 +603,27 @@ void _cycleQuality(LiveRoomController controller) {
 
 /// 毛玻璃胶囊容器：ClipRRect + BackdropFilter 模糊背后内容
 /// - 用于全屏播放器顶部/底部控制条，营造 macOS 原生 vibrancy 观感
+/// - 内包 MouseRegion：鼠标悬停在控制条上时阻止自动隐藏
 class _FrostedBar extends StatelessWidget {
   final Widget child;
+  final LiveRoomController controller;
   final double radius;
-  const _FrostedBar({required this.child, this.radius = 14});
+  const _FrostedBar({
+    required this.child,
+    required this.controller,
+    this.radius = 14,
+  });
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
       child: BackdropFilter(
         filter: ui.ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-        child: child,
+        child: MouseRegion(
+          onEnter: controller.onControlsBarEnter,
+          onExit: controller.onControlsBarExit,
+          child: child,
+        ),
       ),
     );
   }
@@ -683,6 +697,9 @@ Widget buildControls(
           //onLongPress: controller.showDebugInfo,
           child: MouseRegion(
             onEnter: controller.onEnter,
+            onHover: (PointerHoverEvent event) {
+              controller.onHover(event, videoState.context);
+            },
             child: Container(
               width: double.infinity,
               height: double.infinity,
@@ -698,9 +715,12 @@ Widget buildControls(
           bottom: controller.showControlsState.value ? 12 : -64,
           duration: const Duration(milliseconds: 220),
           curve: Curves.easeOutCubic,
-          child: Container(
-            height: 44,
-            padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: MouseRegion(
+            onEnter: controller.onControlsBarEnter,
+            onExit: controller.onControlsBarExit,
+            child: Container(
+              height: 44,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
             decoration: BoxDecoration(
               color: Colors.black.withOpacity(0.72),
               borderRadius: BorderRadius.circular(14),
@@ -864,6 +884,7 @@ Widget buildControls(
                 ),
               ],
             ),
+          ),
           ),
         ),
       ),

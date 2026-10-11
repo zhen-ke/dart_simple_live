@@ -148,6 +148,22 @@ mixin PlayerStateMixin on PlayerMixin {
   /// 自动隐藏控制器计时器
   Timer? hideControlsTimer;
 
+  /// 桌面端：鼠标是否正悬停在控制条上（悬停期间不自动隐藏）
+  bool _hoveringControlsBar = false;
+
+  /// 控制条（毛玻璃气泡/底栏）上的鼠标移入
+  void onControlsBarEnter(PointerEnterEvent event) {
+    _hoveringControlsBar = true;
+    hideControlsTimer?.cancel();
+    showControlsState.value = true;
+  }
+
+  /// 控制条上的鼠标移出：回到视频区，恢复自动隐藏计时
+  void onControlsBarExit(PointerExitEvent event) {
+    _hoveringControlsBar = false;
+    resetHideControlsTimer();
+  }
+
   /// 自动隐藏提示计时器
   Timer? hideSeekTipTimer;
 
@@ -195,7 +211,13 @@ mixin PlayerStateMixin on PlayerMixin {
       const Duration(
         seconds: 2,
       ),
-      hideControls,
+      () {
+        // 指针悬停在控制条上时不隐藏（条形控件会吸收命中，
+        // 底层播放区收不到 hover，计时器会误触发）
+        if (!_hoveringControlsBar) {
+          hideControls();
+        }
+      },
     );
   }
 
