@@ -13,6 +13,7 @@ import 'package:simple_live_tv_app/models/db/history.dart';
 import 'package:simple_live_tv_app/services/bilibili_account_service.dart';
 import 'package:simple_live_tv_app/services/db_service.dart';
 import 'package:simple_live_tv_app/services/signalr_service.dart';
+import 'package:simple_live_tv_app/services/sync_service.dart';
 
 class SyncController extends BaseController {
   final SignalRService signalR = SignalRService();
@@ -33,6 +34,8 @@ class SyncController extends BaseController {
 
   @override
   void onInit() {
+    // 进入同步页才启动HTTP服务；离开页面即停止监听
+    SyncService.instance.startServer();
     connect();
     super.onInit();
   }
@@ -175,6 +178,7 @@ class SyncController extends BaseController {
 
   @override
   void onClose() {
+    SyncService.instance.stopServer();
     _timer?.cancel();
     _stateSubscription?.cancel();
     _roomDestroyedSubscription?.cancel();

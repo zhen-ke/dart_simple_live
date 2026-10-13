@@ -61,44 +61,58 @@ class BasePageController<T> extends BaseController {
   var canLoadMore = false.obs;
   var list = <T>[].obs;
 
+  /// 请求代次：刷新会作废旧请求的结果，防止旧数据写回新列表
+  int _requestGen = 0;
+
   Future refreshData() async {
+    // 代次递增使在飞请求的结果被丢弃；
+    // 即使上次请求还在加载，刷新也照常发起
+    _requestGen++;
     currentPage = 1;
     list.value = [];
-    await loadData();
+    await _loadPage();
   }
 
   Future loadData() async {
+    if (loadding) return;
+    await _loadPage();
+  }
+
+  Future _loadPage() async {
+    loadding = true;
+    final gen = _requestGen;
+    final page = currentPage;
     try {
-      if (loadding) return;
-      loadding = true;
       pageError.value = false;
       pageEmpty.value = false;
       notLogin.value = false;
-      pageLoadding.value = currentPage == 1;
+      pageLoadding.value = page == 1;
 
-      var result = await getData(currentPage, pageSize);
-      //是否可以加载更多
-      if (result.isNotEmpty) {
+      var result = await getData(page, pageSize);
+      // 已被更新的请求取代：结果直接丢弃
+      if (gen != _requestGen) return;
+
+      //是否可以加载更多：返回数量不足一页即视为到底
+      canLoadMore.value = result.length >= pageSize;
+      if (canLoadMore.value) {
         currentPage++;
-        canLoadMore.value = true;
-        pageEmpty.value = false;
-      } else {
-        canLoadMore.value = false;
-        if (currentPage == 1) {
-          pageEmpty.value = true;
-        }
       }
+      pageEmpty.value = page == 1 && result.isEmpty;
       // 赋值数据
-      if (currentPage == 1) {
+      if (page == 1) {
         list.value = result;
       } else {
         list.addAll(result);
       }
     } catch (e) {
-      handleError(e, showPageError: currentPage == 1);
+      if (gen == _requestGen) {
+        handleError(e, showPageError: page == 1);
+      }
     } finally {
-      loadding = false;
-      pageLoadding.value = false;
+      if (gen == _requestGen) {
+        loadding = false;
+        pageLoadding.value = false;
+      }
     }
   }
 
@@ -116,5 +130,12 @@ class BasePageController<T> extends BaseController {
     } else {
       easyRefreshController.callRefresh();
     }
+  }
+
+  @override
+  void onClose() {
+    scrollController.dispose();
+    easyRefreshController.dispose();
+    super.onClose();
   }
 }

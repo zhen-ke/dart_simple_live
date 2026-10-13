@@ -28,9 +28,9 @@ mixin PlayerMixin {
   GlobalKey<VideoState> globalPlayerKey = GlobalKey<VideoState>();
   GlobalKey globalDanmuKey = GlobalKey();
 
-  /// 是否已执行过播放器参数初始化
-  /// - mpv 内核参数只需设置一次，切换线路/清晰度时无需重复设置
-  bool _playerInitialized = false;
+  /// 播放器参数初始化任务：表达"完成"而非"已发起"，
+  /// 并发调用共享同一任务；失败时清空，允许后续重试
+  Future<void>? _playerInitTask;
 
   /// 播放器实例
   late final player = Player(
@@ -49,10 +49,20 @@ mixin PlayerMixin {
 
   /// 初始化播放器参数（仅执行一次）
   /// - ao / force-seekable / 直播流缓存与重连参数
-  Future<void> initializePlayer() async {
-    if (_playerInitialized) return;
-    _playerInitialized = true;
+  Future<void> initializePlayer() {
+    final pending = _playerInitTask;
+    if (pending != null) return pending;
+    final task = _doInitializePlayer();
+    _playerInitTask = task;
+    task.catchError((_) {
+      if (identical(_playerInitTask, task)) {
+        _playerInitTask = null;
+      }
+    });
+    return task;
+  }
 
+  Future<void> _doInitializePlayer() async {
     var pp = player.platform as NativePlayer;
     // 设置音频输出驱动
     if (AppSettingsController.instance.customPlayerOutput.value) {
@@ -1073,6 +1083,9 @@ class PlayerController extends BaseController
     await player.stop();
     disposeDanmakuController();
     _keyboardVolumeTipTimer?.cancel();
+    hidevolumeTimer?.cancel();
+    hideControlsTimer?.cancel();
+    hideSeekTipTimer?.cancel();
     _playerFocusNode?.dispose();
     _playerFocusNode = null;
     await resetSystem();

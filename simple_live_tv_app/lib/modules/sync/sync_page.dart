@@ -186,7 +186,9 @@ class SyncPage extends GetView<SyncController> {
                         () => Visibility(
                           visible: !SyncService.instance.httpRunning.value,
                           child: Text(
-                            'HTTP服务未启动：${SyncService.instance.httpErrorMsg}，请尝试重启应用',
+                            SyncService.instance.httpErrorMsg.value.isEmpty
+                                ? 'HTTP服务正在启动…'
+                                : 'HTTP服务未启动：${SyncService.instance.httpErrorMsg.value}',
                             style: AppStyle.textStyleWhite,
                             textAlign: TextAlign.center,
                           ),

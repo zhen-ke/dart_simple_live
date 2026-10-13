@@ -64,6 +64,11 @@ class LiveRoomPage extends GetView<LiveRoomController> {
     if (key.logicalKey == LogicalKeyboardKey.select ||
         key.logicalKey == LogicalKeyboardKey.enter ||
         key.logicalKey == LogicalKeyboardKey.space) {
+      // 播放失败状态下确认键优先作为重试
+      if (controller.liveStatus.value && controller.errorMsg.value.isNotEmpty) {
+        controller.refreshRoom();
+        return;
+      }
       if (!controller.showControlsState.value) {
         controller.showControls();
       } else {
@@ -149,6 +154,30 @@ class LiveRoomPage extends GetView<LiveRoomController> {
               child: Text(
                 "未开播",
                 style: AppStyle.textStyleWhite,
+              ),
+            ),
+          ),
+        ),
+        // 播放失败/状态未知：显示错误信息并提示确认键重试，
+        // 由断流兜底流程写入 errorMsg
+        Obx(
+          () => Visibility(
+            visible: controller.liveStatus.value &&
+                controller.errorMsg.value.isNotEmpty,
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    controller.errorMsg.value,
+                    style: AppStyle.textStyleWhite,
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    "按确认键重试",
+                    style: AppStyle.textStyleWhite,
+                  ),
+                ],
               ),
             ),
           ),

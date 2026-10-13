@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:web_socket_channel/io.dart';
 
@@ -58,40 +59,63 @@ class WebScoketUtils {
   /// 最大重连次数
   int maxReconnectTime = 5;
 
+  /// 重连退避上限
+  static const int _maxBackoffMs = 30000;
+
   StreamSubscription<dynamic>? streamSubscription;
 
+  /// 连接代次：每次发起连接或主动关闭时递增。
+  /// 过期的握手完成/失败回调据此丢弃，防止已 close 的
+  /// 连接在异步返回后复活状态、重启心跳。
+  int _connectGen = 0;
+
+  /// 是否为主动关闭：主动关闭后不再安排任何重连
+  bool _closedByUser = false;
+
+  final Random _random = Random();
+
   void connect({bool retry = false}) async {
-    close();
+    _closedByUser = false;
+    final gen = ++_connectGen;
+    _teardownChannel();
     try {
       var wsurl = url;
       if (backupUrl != null && backupUrl!.isNotEmpty && retry) {
         wsurl = backupUrl!;
       }
-      webSocket = IOWebSocketChannel.connect(
+      final channel = IOWebSocketChannel.connect(
         wsurl,
-        connectTimeout: Duration(seconds: 10),
+        connectTimeout: const Duration(seconds: 10),
         headers: headers,
       );
+      webSocket = channel;
 
-      await webSocket?.ready;
-      ready();
-    } catch (e) {
-      if (!retry) {
+      await channel.ready;
+      // 握手期间连接可能被主动关闭或被更新的连接取代
+      if (gen != _connectGen) {
+        channel.sink.close();
+        return;
+      }
+      _onChannelReady(channel);
+    } catch (_) {
+      if (gen != _connectGen) return;
+      // 首选地址失败后换备用地址再试一次，仍失败交给统一重连调度
+      if (!retry && backupUrl != null && backupUrl!.isNotEmpty) {
         connect(retry: true);
         return;
       }
-      onError(e, e);
+      _scheduleReconnect();
     }
   }
 
   /// 连接完成
-  void ready() {
+  void _onChannelReady(IOWebSocketChannel channel) {
     status = SocketStatus.connected;
 
-    streamSubscription = webSocket?.stream.listen(
+    streamSubscription = channel.stream.listen(
       (data) => receiveMessage(data),
-      onError: (e, s) => onError(e, s),
-      onDone: onDone,
+      onError: (e, s) => _onChannelDropped(),
+      onDone: _onChannelDropped,
     );
 
     onReady?.call();
@@ -113,17 +137,34 @@ class WebScoketUtils {
     onMessage?.call(data);
   }
 
-  void onError(e, s) {
-    status = SocketStatus.failed;
-    onClose?.call(e.toString());
-  }
-
-  void onDone() {
-    if (status == SocketStatus.closed) {
+  /// 已建立的连接被服务端断开或读取出错：
+  /// 统一交给重连调度，而不是各路径自行处理
+  void _onChannelDropped() {
+    if (status != SocketStatus.connected) {
       return;
     }
+    _teardownChannel();
+    status = SocketStatus.closed;
+    _scheduleReconnect();
+  }
+
+  /// 统一重连调度：连接失败、连接后断开都走这里。
+  /// 指数退避 + 随机抖动，避免多客户端齐步重连
+  void _scheduleReconnect() {
+    if (_closedByUser) return;
+    if (reconnectTime >= maxReconnectTime) {
+      status = SocketStatus.failed;
+      onClose?.call("重连超过最大次数，与服务器断开连接");
+      return;
+    }
+    reconnectTime++;
     onReconnect?.call();
-    reconnect();
+    final backoff = min(2000 * (1 << (reconnectTime - 1)), _maxBackoffMs);
+    reconnectTimer?.cancel();
+    reconnectTimer = Timer(
+      Duration(milliseconds: backoff + _random.nextInt(1000)),
+      () => connect(),
+    );
   }
 
   void sendMessage(dynamic message) {
@@ -132,33 +173,27 @@ class WebScoketUtils {
     }
   }
 
-  void close() {
-    status = SocketStatus.closed;
-
+  /// 释放当前通道，不影响重连调度
+  void _teardownChannel() {
     streamSubscription?.cancel();
+    streamSubscription = null;
+
+    heartBeatTimer?.cancel();
+    heartBeatTimer = null;
+
+    webSocket?.sink.close();
+    webSocket = null;
+  }
+
+  /// 主动关闭：终止一切重连，并使在飞的握手回调失效
+  void close() {
+    _closedByUser = true;
+    _connectGen++;
 
     reconnectTimer?.cancel();
     reconnectTimer = null;
 
-    webSocket?.sink.close();
-
-    heartBeatTimer?.cancel();
-    heartBeatTimer = null;
-  }
-
-  void reconnect() {
+    _teardownChannel();
     status = SocketStatus.closed;
-    if (reconnectTime < maxReconnectTime) {
-      reconnectTime++;
-      reconnectTimer ??= Timer.periodic(Duration(seconds: 5), (timer) {
-        connect();
-      });
-    } else {
-      onClose?.call("重连超过最大次数，与服务器断开连接");
-      reconnectTimer?.cancel();
-      reconnectTimer = null;
-      close();
-      return;
-    }
   }
 }

@@ -296,6 +296,33 @@ class LiveRoomPage extends GetView<LiveRoomController> {
             ),
           ),
         ),
+        // 播放失败/状态未知的重试入口：liveStatus 仍为 true
+        // 但流不可恢复时，由断流兜底流程写入 errorMsg
+        Obx(
+          () => Visibility(
+            visible: controller.liveStatus.value &&
+                controller.errorMsg.value.isNotEmpty,
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    controller.errorMsg.value,
+                    style: const TextStyle(fontSize: 16, color: Colors.white),
+                  ),
+                  const SizedBox(height: 12),
+                  OutlinedButton(
+                    onPressed: controller.refreshRoom,
+                    child: const Text(
+                      "重试",
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ],
     );
   }

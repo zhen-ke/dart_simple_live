@@ -211,12 +211,18 @@ class HuyaSite implements LiveSite {
   Future<LivePlayUrl> getPlayUrls(
       {required LiveRoomDetail detail,
       required LivePlayQuality quality}) async {
-    var ls = <String>[];
-    for (var element in quality.data["urls"]) {
-      var line = element as HuyaLineModel;
-      var url = await getPlayUrl(line, quality.data["bitRate"]);
-      ls.add(url);
-    }
+    // 各线路并行取 Token：单条失败只丢该线路，不影响整体
+    final urls = await Future.wait(
+      (quality.data["urls"] as List).map((element) async {
+        try {
+          var line = element as HuyaLineModel;
+          return await getPlayUrl(line, quality.data["bitRate"]);
+        } catch (_) {
+          return "";
+        }
+      }),
+    );
+    var ls = urls.where((u) => u.isNotEmpty).toList();
     // 最新UA需要额外验证，此方法暂时弃用
     // var ua = await getHuYaUA();
     return LivePlayUrl(

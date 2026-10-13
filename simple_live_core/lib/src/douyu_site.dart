@@ -339,6 +339,9 @@ class DouyuSite implements LiveSite {
 
   /// 预热播放签名：进房时与 getRoomDetail 并行发起
   Future<void> warmPlayArgs(String roomId) async {
+    if (_preferV1) {
+      return;
+    }
     try {
       await _getFreshPlayArgs(roomId, fallback: "");
     } catch (_) {}
@@ -406,21 +409,32 @@ class DouyuSite implements LiveSite {
 
   @override
   Future<LiveRoomDetail> getRoomDetail({required String roomId}) async {
-    Map roomInfo = await _getRoomInfo(roomId);
+    // 三个请求互不依赖，并行发起：
+    // 房间详情 / 开播时间(h5room) / 播放签名(homeH5Enc+JS签名)
+    // 签名与 warmPlayArgs 共用 _freshArgsCache：进房预热完成后
+    // 这里直接命中缓存，不再重复拉脚本签名；
+    // h5room 只提供开播时间，失败不阻塞详情
+    final roomInfoFuture = _getRoomInfo(roomId);
+    final h5RoomInfoFuture = HttpClient.instance
+        .getJson(
+          "https://www.douyu.com/swf_api/h5room/$roomId",
+          queryParameters: {},
+          header: {
+            ..._requestHeaders,
+            'referer': 'https://www.douyu.com/$roomId'
+          },
+        )
+        .then((value) => value is Map ? value : null)
+        .onError((_, __) => null);
+    // V1 模式下画质与取流均不使用 V0 签名参数，跳过整条签名链路
+    final playArgsFuture = _preferV1
+        ? Future<String>.value("")
+        : _getFreshPlayArgs(roomId, fallback: "");
 
-    Map h5RoomInfo = await HttpClient.instance.getJson(
-      "https://www.douyu.com/swf_api/h5room/$roomId",
-      queryParameters: {},
-      header: {..._requestHeaders, 'referer': 'https://www.douyu.com/$roomId'},
-    );
-    String? showTime = h5RoomInfo["data"]?["show_time"]?.toString();
-
-    var jsEncResult = await HttpClient.instance.getText(
-      "https://www.douyu.com/swf_api/homeH5Enc?rids=$roomId",
-      queryParameters: {},
-      header: {..._requestHeaders, 'referer': 'https://www.douyu.com/$roomId'},
-    );
-    var crptext = json.decode(jsEncResult)["data"]["room$roomId"].toString();
+    Map roomInfo = await roomInfoFuture;
+    Map? h5RoomInfo = await h5RoomInfoFuture;
+    String playArgs = await playArgsFuture;
+    String? showTime = h5RoomInfo?["data"]?["show_time"]?.toString();
 
     if (showTime != null && showTime.isNotEmpty) {
       try {
@@ -451,11 +465,7 @@ class DouyuSite implements LiveSite {
       notice: "",
       status: roomInfo["show_status"] == 1 && roomInfo["videoLoop"] != 1,
       danmakuData: roomInfo["room_id"].toString(),
-      data: DouyuSign.getSign(
-        crptext,
-        roomInfo["room_id"].toString(),
-        _deviceDid,
-      ),
+      data: playArgs,
       url: "https://www.douyu.com/$roomId",
       isRecord: roomInfo["videoLoop"] == 1,
       showTime: showTime,

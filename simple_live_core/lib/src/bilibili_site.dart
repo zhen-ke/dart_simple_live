@@ -238,19 +238,6 @@ class BiliBiliSite implements LiveSite {
     var roomInfo = await getRoomInfo(roomId: roomId);
     var realRoomId = roomInfo["room_info"]["room_id"].toString();
 
-    const danmuInfoBaseUrl =
-        "https://api.live.bilibili.com/xlive/web-room/v1/index/getDanmuInfo";
-    var danmuInfoUrl = "$danmuInfoBaseUrl?id=$realRoomId";
-    var queryParams = await getWbiSign(danmuInfoUrl);
-    var roomDanmakuResult = await HttpClient.instance.getJson(
-      danmuInfoBaseUrl,
-      queryParameters: queryParams,
-      header: await getHeader(),
-    );
-    List<String> serverHosts = (roomDanmakuResult["data"]["host_list"] as List)
-        .map<String>((e) => e["host"].toString())
-        .toList();
-
     //var buvid = await getBuvid();
     // 从 roomInfo 中提取 live_start_time
     String? liveStartTime =
@@ -289,17 +276,37 @@ class BiliBiliSite implements LiveSite {
       url: "https://live.bilibili.com/$roomId",
       introduction: roomInfo["room_info"]["description"].toString(),
       notice: "",
-      danmakuData: BiliBiliDanmakuArgs(
-        roomId: int.tryParse(realRoomId) ?? 0,
-        uid: userId,
-        token: roomDanmakuResult["data"]["token"].toString(),
-        serverHost: serverHosts.isNotEmpty
-            ? serverHosts.first
-            : "broadcastlv.chat.bilibili.com",
-        buvid: buvid3,
-        cookie: cookie,
-      ),
+      // 弹幕参数异步解析：详情先返回，视频取流不等弹幕接口；
+      // 弹幕参数失败仅弹幕不可用，由 BiliBiliDanmaku.start 等待结果
+      danmakuData: _prepareDanmakuArgs(realRoomId),
       showTime: liveStartTime, // 将 liveStartTime 赋值给 showTime 字段
+    );
+  }
+
+  /// 弹幕参数解析：getRoomDetail 返回后立即在后台发起，
+  /// getDanmuInfo 的耗时与失败不再阻塞房间详情返回
+  Future<BiliBiliDanmakuArgs> _prepareDanmakuArgs(String realRoomId) async {
+    const danmuInfoBaseUrl =
+        "https://api.live.bilibili.com/xlive/web-room/v1/index/getDanmuInfo";
+    var danmuInfoUrl = "$danmuInfoBaseUrl?id=$realRoomId";
+    var queryParams = await getWbiSign(danmuInfoUrl);
+    var roomDanmakuResult = await HttpClient.instance.getJson(
+      danmuInfoBaseUrl,
+      queryParameters: queryParams,
+      header: await getHeader(),
+    );
+    List<String> serverHosts = (roomDanmakuResult["data"]["host_list"] as List)
+        .map<String>((e) => e["host"].toString())
+        .toList();
+    return BiliBiliDanmakuArgs(
+      roomId: int.tryParse(realRoomId) ?? 0,
+      uid: userId,
+      token: roomDanmakuResult["data"]["token"].toString(),
+      serverHost: serverHosts.isNotEmpty
+          ? serverHosts.first
+          : "broadcastlv.chat.bilibili.com",
+      buvid: buvid3,
+      cookie: cookie,
     );
   }
 
@@ -312,7 +319,6 @@ class BiliBiliSite implements LiveSite {
       queryParameters: queryParams,
       header: await getHeader(),
     );
-    print("【B站接口返回】roomId=$roomId, result=$result");
     return result["data"];
   }
 

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
@@ -39,8 +40,9 @@ class SyncService extends GetxService {
   void onInit() {
     Log.d('SyncService init');
     deviceId = (const Uuid().v4()).split('-').first;
+    // HTTP 服务改为进入同步页时按需启动，不再应用启动即监听；
+    // UDP 常驻监听，但仅在 httpRunning 时才会回应发现广播
     listenUDP();
-    initServer();
     super.onInit();
   }
 
@@ -139,6 +141,31 @@ class SyncService extends GetxService {
     return name;
   }
 
+  /// 是否存在正在进行中的服务启动，防止重复绑定端口
+  var _serverStarting = false;
+
+  /// 当前是否仍需要HTTP服务（绑定异步完成后的有效性校验）
+  var _serverWanted = false;
+
+  /// 进入同步页时启动HTTP服务，幂等
+  void startServer() {
+    _serverWanted = true;
+    if (server != null || _serverStarting) {
+      return;
+    }
+    _serverStarting = true;
+    initServer();
+  }
+
+  /// 离开同步页时停止HTTP服务：不再对外可见，也不再接收写入
+  Future<void> stopServer() async {
+    _serverWanted = false;
+    httpRunning.value = false;
+    var s = server;
+    server = null;
+    await s?.close(force: true);
+  }
+
   /// 初始化HTTP服务
   void initServer() async {
     try {
@@ -150,25 +177,49 @@ class SyncService extends GetxService {
       serverRouter.post('/sync/blocked_word', _syncBlockedWordReuqest);
       serverRouter.post('/sync/account/bilibili', _syncBiliAccountReuqest);
 
-      var server = await shelf_io.serve(
+      var s = await shelf_io.serve(
         serverRouter,
         InternetAddress.anyIPv4,
         httpPort,
       );
 
+      // 等待端口绑定期间用户可能已离开同步页：作废这次启动
+      if (!_serverWanted) {
+        await s.close(force: true);
+        return;
+      }
+      server = s;
+
       // Enable content compression
-      server.autoCompress = true;
+      server!.autoCompress = true;
 
       httpRunning.value = true;
 
       var ip = await getLocalIP();
       ipAddress.value = ip;
 
-      Log.d('Serving at http://$ip:${server.port}');
+      Log.d('Serving at http://$ip:${server!.port}');
     } catch (e) {
       httpErrorMsg.value = e.toString();
       Log.logPrint(e);
+    } finally {
+      _serverStarting = false;
     }
+  }
+
+  /// 请求体大小上限：防止异常客户端发送超大载荷耗尽内存
+  static const int _maxBodyBytes = 8 * 1024 * 1024;
+
+  /// 带上限地读取请求体
+  Future<String> _readLimitedBody(shelf.Request request) async {
+    final buffer = BytesBuilder();
+    await for (var chunk in request.read()) {
+      buffer.add(chunk);
+      if (buffer.length > _maxBodyBytes) {
+        throw Exception('请求体大小超出限制');
+      }
+    }
+    return utf8.decode(buffer.takeBytes());
   }
 
   /// 测试服务能否正常访问
@@ -200,14 +251,17 @@ class SyncService extends GetxService {
       var overlay =
           int.parse(request.requestedUri.queryParameters['overlay'] ?? '0');
 
-      var body = await request.readAsString();
-      Log.d('_syncFollowUserReuqest: $body');
+      var body = await _readLimitedBody(request);
       var jsonBody = json.decode(body);
+      // 先完整解析再覆盖写入：解析失败不清空本地数据
+      final users = <FollowUser>[];
+      for (var item in jsonBody) {
+        users.add(FollowUser.fromJson(item));
+      }
       if (overlay == 1) {
         await DBService.instance.followBox.clear();
       }
-      for (var item in jsonBody) {
-        var user = FollowUser.fromJson(item);
+      for (var user in users) {
         await DBService.instance.followBox.put(user.id, user);
       }
 
@@ -230,14 +284,17 @@ class SyncService extends GetxService {
     try {
       var overlay =
           int.parse(request.requestedUri.queryParameters['overlay'] ?? '0');
-      var body = await request.readAsString();
-      Log.d('_syncFollowUserReuqest: $body');
+      var body = await _readLimitedBody(request);
       var jsonBody = json.decode(body);
+      // 先完整解析再覆盖写入：解析失败不清空本地数据
+      final histories = <History>[];
+      for (var item in jsonBody) {
+        histories.add(History.fromJson(item));
+      }
       if (overlay == 1) {
         await DBService.instance.historyBox.clear();
       }
-      for (var item in jsonBody) {
-        var history = History.fromJson(item);
+      for (var history in histories) {
         if (DBService.instance.historyBox.containsKey(history.id)) {
           var old = DBService.instance.historyBox.get(history.id);
           //如果本地的更新时间比较新，就不更新
@@ -267,8 +324,7 @@ class SyncService extends GetxService {
     try {
       var overlay =
           int.parse(request.requestedUri.queryParameters['overlay'] ?? '0');
-      var body = await request.readAsString();
-      Log.d('_syncBlockedWordReuqest: $body');
+      var body = await _readLimitedBody(request);
       var jsonBody = json.decode(body);
       if (overlay == 1) {
         AppSettingsController.instance.clearShieldList();
@@ -292,8 +348,7 @@ class SyncService extends GetxService {
   /// 同步哔哩哔哩账号
   Future<shelf.Response> _syncBiliAccountReuqest(shelf.Request request) async {
     try {
-      var body = await request.readAsString();
-      Log.d('_syncBiliAccountReuqest: $body');
+      var body = await _readLimitedBody(request);
       var jsonBody = json.decode(body);
       var cookie = jsonBody['cookie'];
       BiliBiliAccountService.instance.setCookie(cookie);

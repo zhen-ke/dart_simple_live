@@ -27,6 +27,10 @@ class Log {
 
   static RxList<DebugLogModel> debugLogs = <DebugLogModel>[].obs;
 
+  /// 调试日志内存上限：超出丢弃最旧记录，
+  /// 防止长时间运行时（尤其 Profile 构建）无界增长干扰性能判断
+  static const int _maxDebugLogs = 500;
+
   static void addDebugLog(String content, Color? color) {
     if (kReleaseMode) {
       return;
@@ -36,6 +40,9 @@ class Log {
     }
     try {
       debugLogs.insert(0, DebugLogModel(DateTime.now(), content, color: color));
+      if (debugLogs.length > _maxDebugLogs) {
+        debugLogs.removeRange(_maxDebugLogs, debugLogs.length);
+      }
     } catch (e) {
       if (kDebugMode) {
         print(e);

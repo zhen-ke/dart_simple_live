@@ -92,12 +92,11 @@ class DouyinDanmaku implements LiveDanmaku {
 
     var url = "$uri&signature=$sign";
     var backupUrl = url.replaceAll("webcast3-ws-web-lq", "webcast5-ws-web-lf");
-    print(url);
     webScoketUtils = WebScoketUtils(
       url: url,
       backupUrl: backupUrl,
       headers: {
-        "User-Agnet": DouyinSite.kDefaultUserAgent,
+        "User-Agent": DouyinSite.kDefaultUserAgent,
         "Cookie": danmakuArgs.cookie,
         "Origin": "https://live.douyin.com",
       },
@@ -130,23 +129,33 @@ class DouyinDanmaku implements LiveDanmaku {
   }
 
   void decodeMessage(args) {
-    // CoreLog.i(args.toString());
-
-    var wssPackage = PushFrame.fromBuffer(args);
-
-    var logId = wssPackage.logId;
-    var decompressed = gzip.decode(wssPackage.payload);
-    var payloadPackage = Response.fromBuffer(decompressed);
-    if (payloadPackage.needAck) {
-      sendAck(logId, payloadPackage.internalExt);
-      //return;
-    }
-    for (var msg in payloadPackage.messagesList) {
-      if (msg.method == 'WebcastChatMessage') {
-        unPackWebcastChatMessage(msg.payload);
-      } else if (msg.method == 'WebcastRoomUserSeqMessage') {
-        unPackWebcastRoomUserSeqMessage(msg.payload);
+    try {
+      var wssPackage = PushFrame.fromBuffer(args);
+      // 心跳回包等无载荷帧不参与消息解码
+      if (wssPackage.payload.isEmpty) {
+        return;
       }
+      var logId = wssPackage.logId;
+      var decompressed = gzip.decode(wssPackage.payload);
+      var payloadPackage = Response.fromBuffer(decompressed);
+      if (payloadPackage.needAck) {
+        sendAck(logId, payloadPackage.internalExt);
+        //return;
+      }
+      // 单条消息解析失败不应影响同帧的其他消息
+      for (var msg in payloadPackage.messagesList) {
+        try {
+          if (msg.method == 'WebcastChatMessage') {
+            unPackWebcastChatMessage(msg.payload);
+          } else if (msg.method == 'WebcastRoomUserSeqMessage') {
+            unPackWebcastRoomUserSeqMessage(msg.payload);
+          }
+        } catch (e) {
+          CoreLog.error(e);
+        }
+      }
+    } catch (e) {
+      CoreLog.error(e);
     }
   }
 
@@ -184,7 +193,9 @@ class DouyinDanmaku implements LiveDanmaku {
     var obj = PushFrame();
     obj.payloadType = 'ack';
     obj.logId = logId;
-    obj.payloadType = internalExt;
+    // ACK 载荷是 internalExt 的字节流，写入 payload 字段
+    // （proto 中 payloadType=7 与 payload=8 是两个字段）
+    obj.payload = utf8.encode(internalExt);
     webScoketUtils?.sendMessage(obj.writeToBuffer());
   }
 

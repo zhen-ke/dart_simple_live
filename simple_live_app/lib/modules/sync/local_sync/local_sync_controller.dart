@@ -20,9 +20,18 @@ class LocalSyncController extends BaseController {
 
   @override
   void onInit() {
+    // 进入同步页才启动HTTP服务；离开页面即停止监听
+    SyncService.instance.startServer();
     SyncService.instance.refreshClients();
     Future.delayed(Duration.zero, initConnect);
     super.onInit();
+  }
+
+  @override
+  void onClose() {
+    SyncService.instance.stopServer();
+    addressController.dispose();
+    super.onClose();
   }
 
   void initConnect() {
@@ -139,7 +148,9 @@ class LocalSyncController extends BaseController {
           Visibility(
             visible: !SyncService.instance.httpRunning.value,
             child: Text(
-              'HTTP服务未启动：${SyncService.instance.httpErrorMsg}，请尝试重启应用',
+              SyncService.instance.httpErrorMsg.value.isEmpty
+                  ? 'HTTP服务正在启动…'
+                  : 'HTTP服务未启动：${SyncService.instance.httpErrorMsg.value}',
               textAlign: TextAlign.center,
             ),
           ),

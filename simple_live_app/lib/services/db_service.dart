@@ -11,12 +11,43 @@ class DBService extends GetxService {
   late Box<History> historyBox;
   late Box<FollowUser> followBox;
   late Box<FollowUserTag> tagBox;
+
+  /// 标签展示顺序：独立存储标签 id 列表，
+  /// 不改动实体主键（历史版本曾用整数主键重写，导致改/删失效）
+  late Box tagOrderBox;
   final Uuid uuid = const Uuid();
 
   Future init() async {
     historyBox = await Hive.openBox("History");
     followBox = await Hive.openBox("FollowUser");
     tagBox = await Hive.openBox("FollowUserTag");
+    tagOrderBox = await Hive.openBox("FollowUserTagOrder");
+    await _migrateTagKeys();
+  }
+
+  /// 迁移历史版本中被整数主键重写的标签记录：
+  /// 记录迁回自身 id，原键序（即排序位置）转为顺序列表
+  Future _migrateTagKeys() async {
+    final misKeyed = <dynamic>[];
+    for (var key in tagBox.keys) {
+      final tag = tagBox.get(key);
+      if (tag != null && tag.id != key) {
+        misKeyed.add(key);
+      }
+    }
+    if (misKeyed.isEmpty) return;
+    final order = <String>[];
+    for (var key in misKeyed) {
+      final tag = tagBox.get(key)!;
+      // 同 id 可能已存在由后续修改写入的更新记录：
+      // 只在缺失时迁回，避免旧快照覆盖新数据
+      if (!tagBox.containsKey(tag.id)) {
+        await tagBox.put(tag.id, tag);
+      }
+      await tagBox.delete(key);
+      order.add(tag.id);
+    }
+    await tagOrderBox.put('order', order);
   }
 
   // follow_user_tag 相关逻辑
@@ -38,9 +69,16 @@ class DBService extends GetxService {
     return tagBox.values.any((item) => item.tag == tag);
   }
 
-  // 获取标签列表
+  // 获取标签列表（按保存的顺序排列，未排序的排最后）
   List<FollowUserTag> getFollowTagList() {
-    return tagBox.values.toList();
+    var tags = tagBox.values.toList();
+    final raw = tagOrderBox.get('order');
+    final order = raw is List ? raw.cast<String>() : const <String>[];
+    if (order.isEmpty) return tags;
+    final rank = {for (var i = 0; i < order.length; i++) order[i]: i};
+    tags.sort((a, b) =>
+        (rank[a.id] ?? order.length).compareTo(rank[b.id] ?? order.length));
+    return tags;
   }
 
   // 修改标签
@@ -50,8 +88,8 @@ class DBService extends GetxService {
 
   // 添加标签
   Future<FollowUserTag> addFollowTag(String tag) async {
-    // 限制标签唯一且长度不超过8个字符
-    if (getFollowTagExistByTag(tag) && tag.length > 8) {
+    // 标签名唯一：已存在同名标签直接返回，不重复创建
+    if (getFollowTagExistByTag(tag)) {
       return getFollowTag(tag)!;
     }
     final String uniqueId = uuid.v4();
@@ -62,11 +100,8 @@ class DBService extends GetxService {
 
   // 调整标签顺序
   Future updateFollowTagOrder(List<FollowUserTag> userTagList) async {
-    final Map<int, FollowUserTag> updatedMap = {
-      for (int i = 0; i < userTagList.length; i++) i: userTagList[i]
-    };
-    await tagBox.clear();
-    await tagBox.putAll(updatedMap);
+    // 实体主键保持不变，展示顺序独立存储
+    await tagOrderBox.put('order', userTagList.map((e) => e.id).toList());
   }
 
   bool getFollowExist(String id) {
