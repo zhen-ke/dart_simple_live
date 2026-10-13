@@ -24,7 +24,16 @@ import 'package:simple_live_core/src/scripts/douyu_sign.dart';
 class DouyuSite implements LiveSite {
   /// 可选的登录 Cookie。匿名播放仍支持，但匿名高画质拉流可能被
   /// 服务端限时掐断（约十分钟左右）。
-  String cookie = "";
+  String _cookie = "";
+  String get cookie => _cookie;
+
+  /// 签名参数与账号身份相关：Cookie 变更后缓存全部作废
+  set cookie(String value) {
+    if (_cookie != value) {
+      _cookie = value;
+      _freshArgsCache.clear();
+    }
+  }
 
   /// 本设备持久化的匿名设备号（32 位 hex），由 App 层生成并注入。
   /// 匿名请求不再共用写死的假 did（千万用户共享一个"设备"是风控
@@ -337,6 +346,9 @@ class DouyuSite implements LiveSite {
   final Map<String, ({String args, DateTime time})> _freshArgsCache = {};
   static const _freshArgsTtl = Duration(seconds: 60);
 
+  /// 容量上限：防止长时间浏览大量房间后无界增长
+  static const _freshArgsCacheMax = 50;
+
   /// 预热播放签名：进房时与 getRoomDetail 并行发起
   Future<void> warmPlayArgs(String roomId) async {
     if (_preferV1) {
@@ -370,6 +382,10 @@ class DouyuSite implements LiveSite {
       if (script is String && script.isNotEmpty) {
         var signed = DouyuSign.getSign(script, roomId, _deviceDid);
         if (signed.isNotEmpty) {
+          // 按插入序淘汰最旧条目
+          if (_freshArgsCache.length >= _freshArgsCacheMax) {
+            _freshArgsCache.remove(_freshArgsCache.keys.first);
+          }
           _freshArgsCache[roomId] = (args: signed, time: DateTime.now());
           return signed;
         }

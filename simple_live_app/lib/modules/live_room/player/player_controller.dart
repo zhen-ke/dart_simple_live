@@ -933,6 +933,7 @@ class PlayerController extends BaseController
         if (_shouldLogPlayerEvents) {
           Log.d("Playing");
         }
+        onPlayingStarted();
       }
     });
 
@@ -963,6 +964,10 @@ class PlayerController extends BaseController
     _pipSubscription?.cancel();
     _playingSubscription?.cancel();
   }
+
+  /// 播放器进入播放态的钩子：由子类覆盖，
+  /// 用于首帧链路计时与恢复结果记账
+  void onPlayingStarted() {}
 
   void mediaEnd() {
     WakelockPlus.disable();

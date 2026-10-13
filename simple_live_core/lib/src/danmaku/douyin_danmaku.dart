@@ -129,6 +129,8 @@ class DouyinDanmaku implements LiveDanmaku {
   }
 
   void decodeMessage(args) {
+    var sw = Stopwatch()..start();
+    var msgCount = 0;
     try {
       var wssPackage = PushFrame.fromBuffer(args);
       // 心跳回包等无载荷帧不参与消息解码
@@ -142,6 +144,7 @@ class DouyinDanmaku implements LiveDanmaku {
         sendAck(logId, payloadPackage.internalExt);
         //return;
       }
+      msgCount = payloadPackage.messagesList.length;
       // 单条消息解析失败不应影响同帧的其他消息
       for (var msg in payloadPackage.messagesList) {
         try {
@@ -156,6 +159,10 @@ class DouyinDanmaku implements LiveDanmaku {
       }
     } catch (e) {
       CoreLog.error(e);
+    } finally {
+      sw.stop();
+      LiveMetrics.instance
+          .recordDanmakuDecode(sw.elapsed, messageCount: msgCount);
     }
   }
 

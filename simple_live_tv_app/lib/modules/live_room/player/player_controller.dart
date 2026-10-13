@@ -268,6 +268,7 @@ class PlayerController extends BaseController
   StreamSubscription? _completedSubscription;
   StreamSubscription? _videoParamsSubscription;
   StreamSubscription? _logSubscription;
+  StreamSubscription<bool>? _playingSubscription;
 
   void initStream() {
     _errorSubscription = player.stream.error.listen((event) {
@@ -282,6 +283,12 @@ class PlayerController extends BaseController
     _completedSubscription = player.stream.completed.listen((event) {
       if (event) {
         mediaEnd();
+      }
+    });
+
+    _playingSubscription = player.stream.playing.listen((event) {
+      if (event) {
+        onPlayingStarted();
       }
     });
     _logSubscription = player.stream.log.listen((event) {
@@ -300,7 +307,12 @@ class PlayerController extends BaseController
     _completedSubscription?.cancel();
     _videoParamsSubscription?.cancel();
     _logSubscription?.cancel();
+    _playingSubscription?.cancel();
   }
+
+  /// 播放器进入播放态的钩子：由子类覆盖，
+  /// 用于首帧链路计时与恢复结果记账
+  void onPlayingStarted() {}
 
   void mediaEnd() {}
 

@@ -23,7 +23,21 @@ class BiliBiliSite implements LiveSite {
   @override
   String name = "哔哩哔哩直播";
 
-  String cookie = "";
+  String _cookie = "";
+  String get cookie => _cookie;
+
+  /// 账号变更后，与身份相关的缓存全部作废：
+  /// WBI 签名键与 accessId 均按旧身份获取，必须重新拉取
+  set cookie(String value) {
+    if (_cookie != value) {
+      _cookie = value;
+      kImgKey = '';
+      kSubKey = '';
+      _wbiKeysFetchedAt = null;
+      accessId = '';
+    }
+  }
+
   int userId = 0;
 
   @override
@@ -471,6 +485,13 @@ class BiliBiliSite implements LiveSite {
 
   static String kImgKey = '';
   static String kSubKey = '';
+
+  /// WBI 密钥会轮换：缓存 12 小时后强制重新拉取
+  static const _wbiKeysTtl = Duration(hours: 12);
+  static DateTime? _wbiKeysFetchedAt;
+
+  /// 并发签名共享同一个密钥拉取任务，避免重复请求 nav 接口
+  static Future<(String, String)>? _wbiKeysTask;
   static const List<int> mixinKeyEncTab = [
     46,
     47,
@@ -537,10 +558,18 @@ class BiliBiliSite implements LiveSite {
     44,
     52
   ];
-  Future<(String, String)> getWbiKeys() async {
-    if (kImgKey.isNotEmpty && kSubKey.isNotEmpty) {
-      return (kImgKey, kSubKey);
+  Future<(String, String)> getWbiKeys() {
+    if (kImgKey.isNotEmpty &&
+        kSubKey.isNotEmpty &&
+        _wbiKeysFetchedAt != null &&
+        DateTime.now().difference(_wbiKeysFetchedAt!) < _wbiKeysTtl) {
+      return Future.value((kImgKey, kSubKey));
     }
+    return _wbiKeysTask ??=
+        _fetchWbiKeys().whenComplete(() => _wbiKeysTask = null);
+  }
+
+  Future<(String, String)> _fetchWbiKeys() async {
     // 获取最新的 img_key 和 sub_key
     var resp = await HttpClient.instance.getJson(
       'https://api.bilibili.com/x/web-interface/nav',
@@ -554,6 +583,7 @@ class BiliBiliSite implements LiveSite {
 
     kImgKey = imgKey;
     kSubKey = subKey;
+    _wbiKeysFetchedAt = DateTime.now();
 
     return (imgKey, subKey);
   }

@@ -73,6 +73,20 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
   Timer? _chatFlushTimer;
   Worker? _shieldPatternWorker;
 
+  /// 弹幕显示预算：待显示队列与单批次提交上限，
+  /// 高热房间过载时丢弃旧弹幕，优先保视频播放
+  static const int _maxPendingDanmaku = 400;
+  static const int _maxDanmakuPerFlush = 60;
+
+  /// 首帧链路分阶段计时与恢复统计：为调参提供实测数据
+  final Stopwatch _loadStopwatch = Stopwatch();
+  int? _detailMs;
+  int? _qualitesMs;
+  int? _playUrlMs;
+  DateTime? _openIssuedAt;
+  bool _firstFrameLogged = false;
+  bool _recovering = false;
+
   /// 清晰度数据
   RxList<LivePlayQuality> qualites = RxList<LivePlayQuality>();
 
@@ -237,7 +251,17 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     }
 
     if (_pendingDanmaku.isNotEmpty) {
-      addDanmaku(List<DanmakuContentItem>.from(_pendingDanmaku));
+      List<DanmakuContentItem> batch;
+      if (_pendingDanmaku.length > _maxDanmakuPerFlush) {
+        // 超载：只提交最新的 N 条，丢弃已失去时效的旧弹幕
+        LiveMetrics.instance
+            .recordDanmakuDrop(_pendingDanmaku.length - _maxDanmakuPerFlush);
+        batch = _pendingDanmaku
+            .sublist(_pendingDanmaku.length - _maxDanmakuPerFlush);
+      } else {
+        batch = List<DanmakuContentItem>.from(_pendingDanmaku);
+      }
+      addDanmaku(batch);
       _pendingDanmaku.clear();
     }
   }
@@ -370,17 +394,21 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
       _pendingMessages.add(msg);
 
       if (liveStatus.value && !isBackground && showDanmakuState.value) {
-        _pendingDanmaku.add(
-          DanmakuContentItem(
-            msg.message,
-            color: Color.fromARGB(
-              255,
-              msg.color.r,
-              msg.color.g,
-              msg.color.b,
+        if (_pendingDanmaku.length < _maxPendingDanmaku) {
+          _pendingDanmaku.add(
+            DanmakuContentItem(
+              msg.message,
+              color: Color.fromARGB(
+                255,
+                msg.color.r,
+                msg.color.g,
+                msg.color.b,
+              ),
             ),
-          ),
-        );
+          );
+        } else {
+          LiveMetrics.instance.recordDanmakuDrop(1);
+        }
       }
       _scheduleChatFlush();
     } else if (msg.type == LiveMessageType.online) {
@@ -419,6 +447,15 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
   void loadData() async {
     // 开启新的播放会话：此前一切在飞请求与恢复任务作废
     final gen = ++_sessionGen;
+    // 分阶段计时归零：detail→画质→取流→open→首帧
+    _loadStopwatch
+      ..reset()
+      ..start();
+    _detailMs = null;
+    _qualitesMs = null;
+    _playUrlMs = null;
+    _firstFrameLogged = false;
+    _recovering = false;
     try {
       SmartDialog.showLoading(msg: "");
       loadError.value = false;
@@ -432,6 +469,7 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
       }
       detail.value = await site.liveSite.getRoomDetail(roomId: roomId);
       if (!_sessionAlive(gen)) return;
+      _detailMs = _loadStopwatch.elapsedMilliseconds;
       _reResolveTimes.clear();
 
       if (site.id == Constant.kDouyin) {
@@ -506,6 +544,7 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
       var playQualites =
           await site.liveSite.getPlayQualites(detail: detail.value!);
       if (!_sessionAlive(gen)) return;
+      _qualitesMs = _loadStopwatch.elapsedMilliseconds;
 
       if (playQualites.isEmpty) {
         SmartDialog.showToast("无法读取播放清晰度");
@@ -581,6 +620,7 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
       //重置错误次数
       mediaErrorRetryCount = 0;
       _playbackEpoch++;
+      _playUrlMs = _loadStopwatch.elapsedMilliseconds;
       initPlaylist();
       return true;
     } catch (e) {
@@ -623,6 +663,7 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
       // 初始化期间取流请求可能已被更新的一次取代
       if (!_sessionAlive(gen) || req != _playUrlGen) return;
 
+      _openIssuedAt = DateTime.now();
       await player.open(Playlist(_buildMediaList()));
     } catch (e) {
       // initPlaylist 由 getPlayUrl 以 unawaited 方式调用，
@@ -640,6 +681,7 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     currentLineInfo.value = "线路${currentLineIndex + 1}";
     errorMsg.value = "";
 
+    _openIssuedAt = DateTime.now();
     await player.open(Playlist(_buildMediaList()));
     if (!_sessionAlive(gen)) return;
     if (currentLineIndex > 0) {
@@ -652,6 +694,7 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     currentLineInfo.value = "线路${currentLineIndex + 1}";
     errorMsg.value = "";
 
+    _openIssuedAt = DateTime.now();
     await player.jump(currentLineIndex);
   }
 
@@ -659,6 +702,7 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
   /// 触发，经 _recoveryTask 合并为单轮恢复流程
   void _onPlaybackFailure(String reason, {String? error}) {
     if (_roomClosed) return;
+    _recovering = true;
     _recoveryTask ??= _runRecovery(reason, error: error)
         .whenComplete(() => _recoveryTask = null);
   }
@@ -677,6 +721,7 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
       await Future.delayed(delay);
       // 退避期间用户退出/切房/手动操作：本次恢复作废
       if (!_sessionAlive(gen) || epoch != _playbackEpoch) return;
+      LiveMetrics.instance.recordRecoveryAttempt();
       if (site.id == Constant.kDouyu) {
         // 斗鱼签名带时间戳、播放地址带 expire 时效：重试需重新取流，
         // 重放旧地址会被服务端掐断。getPlayUrl 内部会重置重试计数，需还原
@@ -725,6 +770,7 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
       {required int gen, String? error}) async {
     if (!_sessionAlive(gen)) return;
     if (playUrls.length - 1 != currentLineIndex) {
+      LiveMetrics.instance.recordRecoveryAttempt();
       changePlayLine(currentLineIndex + 1);
       return;
     }
@@ -747,17 +793,22 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
       Log.d("重试耗尽但房间仍在播，刷新流信息再试一轮");
       currentLineIndex = 0;
       mediaErrorRetryCount = 0;
+      LiveMetrics.instance.recordRecoveryAttempt();
       if (await _refreshStreamInfo(gen, prefetched: freshDetail)) {
         return;
       }
       if (!_sessionAlive(gen)) return;
       // 刷新确认房间已下播（内部已标记 liveStatus=false）
-      if (!liveStatus.value) return;
+      if (!liveStatus.value) {
+        _endRecovery(succeeded: false);
+        return;
+      }
       // 仍在播但无法恢复：报播放失败，不谎报下播
       errorMsg.value = "播放失败";
       if (error != null) {
         SmartDialog.showToast("播放失败:$error");
       }
+      _endRecovery(succeeded: false);
       return;
     }
     if (stillLive == null) {
@@ -765,12 +816,43 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
       // 等待下一轮断流事件或用户手动刷新
       errorMsg.value = "无法确认直播状态，请检查网络后重试";
       SmartDialog.showToast(errorMsg.value);
+      _endRecovery(succeeded: false);
       return;
     }
     liveStatus.value = false;
     if (error != null) {
       errorMsg.value = "播放失败";
       SmartDialog.showToast("播放失败:$error");
+    }
+    _endRecovery(succeeded: false);
+  }
+
+  /// 一轮恢复终结记账：重新起播由 onPlayingStarted 记成功，
+  /// 这里处理进入终态的路径
+  void _endRecovery({required bool succeeded}) {
+    if (!_recovering) return;
+    _recovering = false;
+    LiveMetrics.instance.recordRecoveryEnd(succeeded: succeeded);
+  }
+
+  /// 播放器进入播放态：记录 open→playing 耗时；
+  /// 处于恢复流程中时同时记一次恢复成功
+  @override
+  void onPlayingStarted() {
+    final issued = _openIssuedAt;
+    if (issued == null) return;
+    _openIssuedAt = null;
+    final openMs = DateTime.now().difference(issued).inMilliseconds;
+    _endRecovery(succeeded: true);
+    if (!_firstFrameLogged) {
+      _firstFrameLogged = true;
+      Log.i(
+        '首帧链路: detail=${_detailMs}ms qualites=${_qualitesMs}ms '
+        'playUrl=${_playUrlMs}ms open->playing=${openMs}ms '
+        'total=${_loadStopwatch.elapsedMilliseconds}ms',
+      );
+    } else {
+      Log.i('恢复起播: open->playing=${openMs}ms');
     }
   }
 

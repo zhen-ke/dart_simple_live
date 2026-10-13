@@ -116,21 +116,83 @@ class LogFileWriter {
     fileName = "$dt.log";
     initFile();
   }
+
+  /// 单个日志文件大小上限：超出切到新文件，避免无界追加
+  static const int _maxFileBytes = 8 * 1024 * 1024;
+
+  /// 日志文件数量上限与保留期：超限的旧文件在启动时清理
+  static const int _maxLogFiles = 10;
+  static const Duration _logRetention = Duration(days: 7);
+
+  File? _logFile;
   IOSink? fileWriter;
+  int _writtenBytes = 0;
+  int _fileSeq = 0;
+
   void initFile() async {
     var supportDir = await getApplicationSupportDirectory();
     var logDir = Directory("${supportDir.path}/log");
     if (!await logDir.exists()) {
       await logDir.create();
     }
-    var logFile = File("${logDir.path}/$fileName");
-    fileWriter = logFile.openWrite(mode: FileMode.append);
+    await _pruneOldLogs(logDir);
+    _logFile = File("${logDir.path}/$fileName");
+    fileWriter = _logFile!.openWrite(mode: FileMode.append);
     writeSystemInfo();
+  }
+
+  /// 清理超过保留期的日志；存活文件仍超上限时淘汰最旧的
+  Future<void> _pruneOldLogs(Directory logDir) async {
+    try {
+      var files = await logDir
+          .list()
+          .where((e) => e is File && e.path.endsWith(".log"))
+          .cast<File>()
+          .toList();
+      var now = DateTime.now();
+      var alive = <(File, DateTime)>[];
+      for (var f in files) {
+        var stat = await f.stat();
+        if (now.difference(stat.modified) > _logRetention) {
+          await f.delete();
+        } else {
+          alive.add((f, stat.modified));
+        }
+      }
+      alive.sort((a, b) => a.$2.compareTo(b.$2));
+      // 为本次新文件留出位置
+      while (alive.length >= _maxLogFiles) {
+        await alive.removeAt(0).$1.delete();
+      }
+    } catch (_) {}
   }
 
   void write(String content) {
     fileWriter?.write(content);
     fileWriter?.write("\r\n");
+    // 粗略计字节（长度不等于 UTF-8 字节数，仅用于轮转阈值）
+    _writtenBytes += content.length + 2;
+    if (_writtenBytes > _maxFileBytes) {
+      _rotateFile();
+    }
+  }
+
+  /// 单文件过大时切到新文件
+  void _rotateFile() async {
+    var old = fileWriter;
+    fileWriter = null;
+    _writtenBytes = 0;
+    try {
+      await old?.close();
+      final file = _logFile;
+      if (file == null) return;
+      _fileSeq++;
+      var base = fileName.endsWith(".log")
+          ? fileName.substring(0, fileName.length - 4)
+          : fileName;
+      _logFile = File("${file.parent.path}/${base}_$_fileSeq.log");
+      fileWriter = _logFile!.openWrite();
+    } catch (_) {}
   }
 
   Future close() async {

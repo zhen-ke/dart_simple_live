@@ -149,6 +149,8 @@ class BiliBiliDanmaku implements LiveDanmaku {
   }
 
   void decodeMessage(List<int> data) {
+    var sw = Stopwatch()..start();
+    var msgCount = 0;
     try {
       //协议版本。0为JSON，可以直接解析；1为房间人气值,Body为4位Int32；2为压缩过Buffer，需要解压再处理
       int protocolVersion = readInt(data, 6, 2);
@@ -181,11 +183,16 @@ class BiliBiliDanmaku implements LiveDanmaku {
             text.split(RegExp(r"[\x00-\x1f]+", unicode: true, multiLine: true));
         for (var item
             in group.where((x) => x.length > 2 && x.startsWith('{'))) {
+          msgCount++;
           parseMessage(item);
         }
       }
     } catch (e) {
       CoreLog.error(e);
+    } finally {
+      sw.stop();
+      LiveMetrics.instance
+          .recordDanmakuDecode(sw.elapsed, messageCount: msgCount);
     }
   }
 
