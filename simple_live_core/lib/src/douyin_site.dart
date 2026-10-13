@@ -33,8 +33,6 @@ class DouyinSite implements LiveSite {
   String cookie = "";
 
   void _logDebug(String msg) {
-    // 同时使用 print 和 CoreLog 确保日志输出
-    print("[Douyin] $msg");
     CoreLog.d("[Douyin] $msg");
   }
 

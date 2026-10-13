@@ -45,6 +45,11 @@ class DouyinDanmaku implements LiveDanmaku {
 
   @override
   Future start(dynamic args) async {
+    // danmakuData 允许传入在途 Future：详情先返回让视频起播，
+    // 弹幕参数并行解析，连接前等待其就绪
+    if (args is Future) {
+      args = await args;
+    }
     danmakuArgs = args as DouyinDanmakuArgs;
     var ts = DateTime.now().millisecondsSinceEpoch;
     var uri = Uri.parse(serverUrl).replace(

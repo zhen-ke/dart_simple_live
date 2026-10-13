@@ -14,7 +14,10 @@ class LiveDanmaku {
   void heartbeat() {}
 
   /// 开始接收信息
-  Future start(dynamic args) {
+  /// - [args] 为各平台的弹幕参数对象（见 LiveRoomDetail.danmakuData）。
+  ///   允许传入仍在解析中的 Future：详情先返回让视频起播，
+  ///   弹幕参数并行解析，实现方在连接前 await 其完成
+  Future start(FutureOr<Object?> args) {
     return Future.value();
   }
 

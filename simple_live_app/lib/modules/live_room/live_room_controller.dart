@@ -87,6 +87,16 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
   bool _firstFrameLogged = false;
   bool _recovering = false;
 
+  /// 整轮恢复的总时间预算：断流事件起的截止时间，
+  /// 防止退避+换线+刷新的长尾组合无限消耗
+  DateTime? _recoveryDeadline;
+  static const Duration _recoveryBudget = Duration(seconds: 90);
+
+  /// 稳定播放计时：持续播放满 60 秒才重置重试预算，
+  /// 闪断救活不应持续消耗预算，但真·稳定后要能恢复预算
+  Timer? _stablePlayTimer;
+  static const Duration _stablePlayThreshold = Duration(minutes: 1);
+
   /// 清晰度数据
   RxList<LivePlayQuality> qualites = RxList<LivePlayQuality>();
 
@@ -456,6 +466,8 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     _playUrlMs = null;
     _firstFrameLogged = false;
     _recovering = false;
+    _recoveryDeadline = null;
+    _stablePlayTimer?.cancel();
     try {
       SmartDialog.showLoading(msg: "");
       loadError.value = false;
@@ -702,7 +714,12 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
   /// 触发，经 _recoveryTask 合并为单轮恢复流程
   void _onPlaybackFailure(String reason, {String? error}) {
     if (_roomClosed) return;
-    _recovering = true;
+    if (!_recovering) {
+      _recovering = true;
+      _recoveryDeadline = DateTime.now().add(_recoveryBudget);
+    }
+    // 播放已不再稳定：挂起的预算重置作废
+    _stablePlayTimer?.cancel();
     _recoveryTask ??= _runRecovery(reason, error: error)
         .whenComplete(() => _recoveryTask = null);
   }
@@ -721,6 +738,11 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
       await Future.delayed(delay);
       // 退避期间用户退出/切房/手动操作：本次恢复作废
       if (!_sessionAlive(gen) || epoch != _playbackEpoch) return;
+      // 整轮恢复的总时间预算耗尽：直接进入终态核实，不再消耗重试
+      if (_recoveryDeadlineExceeded) {
+        await _playbackRetriesExhausted(gen: gen, error: error);
+        return;
+      }
       LiveMetrics.instance.recordRecoveryAttempt();
       if (site.id == Constant.kDouyu) {
         // 斗鱼签名带时间戳、播放地址带 expire 时效：重试需重新取流，
@@ -788,7 +810,9 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
       } catch (_) {}
     }
     if (!_sessionAlive(gen)) return;
-    if (stillLive == true && !_reResolveStormExceeded) {
+    if (stillLive == true &&
+        !_reResolveStormExceeded &&
+        !_recoveryDeadlineExceeded) {
       _reResolveTimes.add(DateTime.now());
       Log.d("重试耗尽但房间仍在播，刷新流信息再试一轮");
       currentLineIndex = 0;
@@ -827,11 +851,17 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     _endRecovery(succeeded: false);
   }
 
+  /// 恢复预算是否已超总时限
+  bool get _recoveryDeadlineExceeded =>
+      _recoveryDeadline != null &&
+      DateTime.now().isAfter(_recoveryDeadline!);
+
   /// 一轮恢复终结记账：重新起播由 onPlayingStarted 记成功，
   /// 这里处理进入终态的路径
   void _endRecovery({required bool succeeded}) {
     if (!_recovering) return;
     _recovering = false;
+    _recoveryDeadline = null;
     LiveMetrics.instance.recordRecoveryEnd(succeeded: succeeded);
   }
 
@@ -844,6 +874,12 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     _openIssuedAt = null;
     final openMs = DateTime.now().difference(issued).inMilliseconds;
     _endRecovery(succeeded: true);
+    // 稳定播放满阈值后重置重试预算：靠重开流救活的房间
+    // 若长期稳定播放，下一次故障应拥有完整预算
+    _stablePlayTimer?.cancel();
+    _stablePlayTimer = Timer(_stablePlayThreshold, () {
+      mediaErrorRetryCount = 0;
+    });
     if (!_firstFrameLogged) {
       _firstFrameLogged = true;
       Log.i(
@@ -1487,6 +1523,7 @@ ${errorStackTrace ?? (error is Error ? (error as Error).stackTrace : "")}''');
     danmakuController = null;
     _liveDurationTimer?.cancel(); // 页面关闭时取消定时器
     _scPruneTimer?.cancel();
+    _stablePlayTimer?.cancel();
     super.onClose();
   }
 }

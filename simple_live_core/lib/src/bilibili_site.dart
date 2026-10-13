@@ -31,9 +31,7 @@ class BiliBiliSite implements LiveSite {
   set cookie(String value) {
     if (_cookie != value) {
       _cookie = value;
-      kImgKey = '';
-      kSubKey = '';
-      _wbiKeysFetchedAt = null;
+      _invalidateWbiKeys();
       accessId = '';
     }
   }
@@ -112,13 +110,7 @@ class BiliBiliSite implements LiveSite {
     var url =
         "$baseUrl?platform=web&parent_area_id=${category.parentId}&area_id=${category.id}&sort_type=&page=$page&w_webid=${await getAccessId()}";
 
-    var queryParams = await getWbiSign(url);
-
-    var result = await HttpClient.instance.getJson(
-      baseUrl,
-      queryParameters: queryParams,
-      header: await getHeader(),
-    );
+    var result = await _getWbiSignedJson(url);
 
     var hasMore = result["data"]["has_more"] == 1;
     var items = <LiveRoomItem>[];
@@ -224,13 +216,7 @@ class BiliBiliSite implements LiveSite {
         "https://api.live.bilibili.com/xlive/web-interface/v1/second/getListByArea";
     var url = "$baseUrl?platform=web&sort=online&page_size=30&page=$page";
 
-    var queryParams = await getWbiSign(url);
-
-    var result = await HttpClient.instance.getJson(
-      baseUrl,
-      queryParameters: queryParams,
-      header: await getHeader(),
-    );
+    var result = await _getWbiSignedJson(url);
 
     var hasMore = (result["data"]["list"] as List).isNotEmpty;
     var items = <LiveRoomItem>[];
@@ -257,28 +243,6 @@ class BiliBiliSite implements LiveSite {
     String? liveStartTime =
         roomInfo["room_info"]?["live_start_time"]?.toString();
 
-    // 计算开播时长并打印到控制台 (参考斗鱼的实现)
-    if (liveStartTime != null &&
-        liveStartTime.isNotEmpty &&
-        liveStartTime != "0") {
-      // 检查是否为0，0可能表示未开播或无此信息
-      try {
-        int startTimeStamp = int.parse(liveStartTime);
-        int currentTimeStamp = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-        int durationInSeconds = currentTimeStamp - startTimeStamp;
-
-        int hours = durationInSeconds ~/ 3600;
-        int minutes = (durationInSeconds % 3600) ~/ 60;
-        int seconds = durationInSeconds % 60;
-
-        String formattedDuration =
-            '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
-        print('Bilibili直播间 $roomId 开播时长: $formattedDuration');
-      } catch (e) {
-        print('计算 Bilibili 开播时长出错: $e');
-      }
-    }
-
     return LiveRoomDetail(
       roomId: realRoomId,
       title: roomInfo["room_info"]["title"].toString(),
@@ -303,12 +267,7 @@ class BiliBiliSite implements LiveSite {
     const danmuInfoBaseUrl =
         "https://api.live.bilibili.com/xlive/web-room/v1/index/getDanmuInfo";
     var danmuInfoUrl = "$danmuInfoBaseUrl?id=$realRoomId";
-    var queryParams = await getWbiSign(danmuInfoUrl);
-    var roomDanmakuResult = await HttpClient.instance.getJson(
-      danmuInfoBaseUrl,
-      queryParameters: queryParams,
-      header: await getHeader(),
-    );
+    var roomDanmakuResult = await _getWbiSignedJson(danmuInfoUrl);
     List<String> serverHosts = (roomDanmakuResult["data"]["host_list"] as List)
         .map<String>((e) => e["host"].toString())
         .toList();
@@ -327,12 +286,7 @@ class BiliBiliSite implements LiveSite {
   Future<Map<String, dynamic>> getRoomInfo({required String roomId}) async {
     var url =
         "https://api.live.bilibili.com/xlive/web-room/v1/index/getInfoByRoom?room_id=$roomId";
-    var queryParams = await getWbiSign(url);
-    var result = await HttpClient.instance.getJson(
-      "https://api.live.bilibili.com/xlive/web-room/v1/index/getInfoByRoom",
-      queryParameters: queryParams,
-      header: await getHeader(),
-    );
+    var result = await _getWbiSignedJson(url);
     return result["data"];
   }
 
@@ -558,6 +512,39 @@ class BiliBiliSite implements LiveSite {
     44,
     52
   ];
+  /// WBI 签名请求统一入口：密钥轮换或风控拒绝（-352/-412）时
+  /// 作废本地缓存键并重签重试一次，防止密钥过期导致整轮失败
+  Future<dynamic> _getWbiSignedJson(String url) async {
+    var result = await _requestWbiSigned(url);
+    if (_isWbiSignRejected(result)) {
+      _invalidateWbiKeys();
+      result = await _requestWbiSigned(url);
+    }
+    return result;
+  }
+
+  Future<dynamic> _requestWbiSigned(String url) async {
+    var uri = Uri.parse(url);
+    var baseUrl = "${uri.scheme}://${uri.host}${uri.path}";
+    var queryParams = await getWbiSign(url);
+    return HttpClient.instance.getJson(
+      baseUrl,
+      queryParameters: queryParams,
+      header: await getHeader(),
+    );
+  }
+
+  /// -352 风控校验失败 / -412 请求被拦截：均为 WBI 签名不被接受的响应
+  bool _isWbiSignRejected(dynamic result) =>
+      result is Map && (result["code"] == -352 || result["code"] == -412);
+
+  /// 作废本地 WBI 密钥：签名被拒或账号变更时调用
+  void _invalidateWbiKeys() {
+    kImgKey = '';
+    kSubKey = '';
+    _wbiKeysFetchedAt = null;
+  }
+
   Future<(String, String)> getWbiKeys() {
     if (kImgKey.isNotEmpty &&
         kSubKey.isNotEmpty &&

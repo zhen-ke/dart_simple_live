@@ -47,6 +47,10 @@ class HuyaDanmaku implements LiveDanmaku {
 
   @override
   Future start(dynamic args) async {
+    // danmakuData 允许传入在途 Future：连接前等待其就绪
+    if (args is Future) {
+      args = await args;
+    }
     danmakuArgs = args as HuyaDanmakuArgs;
     webScoketUtils = WebScoketUtils(
       url: serverUrl,
