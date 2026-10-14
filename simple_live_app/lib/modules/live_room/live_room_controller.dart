@@ -79,6 +79,18 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
   static const int _maxPendingDanmaku = 400;
   static const int _maxDanmakuPerFlush = 60;
 
+  /// 弹幕丢弃节流提示：高热房间过载时让用户感知降级发生
+  DateTime? _lastDropNoticeAt;
+  static const Duration _dropNoticeInterval = Duration(seconds: 10);
+
+  void _notifyDanmakuDropped() {
+    final last = _lastDropNoticeAt;
+    final now = DateTime.now();
+    if (last != null && now.difference(last) < _dropNoticeInterval) return;
+    _lastDropNoticeAt = now;
+    addSysMsg("弹幕量过大，已跳过部分显示");
+  }
+
   /// 首帧链路分阶段计时与恢复统计：为调参提供实测数据
   final Stopwatch _loadStopwatch = Stopwatch();
   int? _detailMs;
@@ -267,6 +279,7 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
         // 超载：只提交最新的 N 条，丢弃已失去时效的旧弹幕
         LiveMetrics.instance
             .recordDanmakuDrop(_pendingDanmaku.length - _maxDanmakuPerFlush);
+        _notifyDanmakuDropped();
         batch = _pendingDanmaku
             .sublist(_pendingDanmaku.length - _maxDanmakuPerFlush);
       } else {
@@ -421,6 +434,7 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
           );
         } else {
           LiveMetrics.instance.recordDanmakuDrop(1);
+          _notifyDanmakuDropped();
         }
       }
       _scheduleChatFlush();

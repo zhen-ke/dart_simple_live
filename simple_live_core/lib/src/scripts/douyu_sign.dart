@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dart_quickjs/dart_quickjs.dart';
 
 class DouyuSign {
@@ -9,12 +11,26 @@ class DouyuSign {
   /// 避免每次取流都新建运行时并重新编译上百 KB 的库代码
   static JsRuntime? _jsRuntime;
 
+  /// 闲置回收：连续 [_idleTimeout] 无签名请求就释放运行时内存，
+  /// 下次签名按需重建（CryptoJS 重新 eval，冷路径开销可接受）
+  static const Duration _idleTimeout = Duration(minutes: 5);
+  static Timer? _idleTimer;
+
   static JsRuntime get _runtime {
+    _idleTimer?.cancel();
+    _idleTimer = Timer(_idleTimeout, _disposeRuntime);
     _jsRuntime ??= JsRuntime(
       memoryLimit: 4 * 1024 * 1024,
       maxStackSize: 64 * 1024,
     )..eval(kCryptoJs);
     return _jsRuntime!;
+  }
+
+  static void _disposeRuntime() {
+    _idleTimer = null;
+    var rt = _jsRuntime;
+    _jsRuntime = null;
+    rt?.dispose();
   }
 
   /// [did] 为设备号：应传本设备持久化的随机 did，使签名身份与请求 Cookie
