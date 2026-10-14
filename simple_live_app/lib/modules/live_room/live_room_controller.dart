@@ -59,7 +59,8 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
   Rx<LiveRoomDetail?> detail = Rx<LiveRoomDetail?>(null);
   var online = 0.obs;
   var followed = false.obs;
-  var liveStatus = false.obs;
+  /// 开播状态三态：查询失败是 unknown，不能与 offline 混为一谈
+  var liveStatus = LiveStatus.unknown.obs;
   RxList<LiveSuperChatMessage> superChats = RxList<LiveSuperChatMessage>();
 
   /// 滚动控制
@@ -403,7 +404,9 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
 
       _pendingMessages.add(msg);
 
-      if (liveStatus.value && !isBackground && showDanmakuState.value) {
+      if (liveStatus.value == LiveStatus.live &&
+          !isBackground &&
+          showDanmakuState.value) {
         if (_pendingDanmaku.length < _maxPendingDanmaku) {
           _pendingDanmaku.add(
             DanmakuContentItem(
@@ -517,8 +520,10 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
       // 确认房间关注状态
       followed.value = DBService.instance.getFollowExist("${site.id}_$roomId");
       online.value = detail.value!.online;
-      liveStatus.value = detail.value!.status || detail.value!.isRecord;
-      if (liveStatus.value) {
+      liveStatus.value = (detail.value!.status || detail.value!.isRecord)
+          ? LiveStatus.live
+          : LiveStatus.offline;
+      if (liveStatus.value == LiveStatus.live) {
         getPlayQualites();
       }
       if (detail.value!.isRecord) {
@@ -822,8 +827,8 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
         return;
       }
       if (!_sessionAlive(gen)) return;
-      // 刷新确认房间已下播（内部已标记 liveStatus=false）
-      if (!liveStatus.value) {
+      // 刷新确认房间已下播（内部已标记 offline）
+      if (liveStatus.value == LiveStatus.offline) {
         _endRecovery(succeeded: false);
         return;
       }
@@ -843,7 +848,7 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
       _endRecovery(succeeded: false);
       return;
     }
-    liveStatus.value = false;
+    liveStatus.value = LiveStatus.offline;
     if (error != null) {
       errorMsg.value = "播放失败";
       SmartDialog.showToast("播放失败:$error");
@@ -903,7 +908,7 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
       if (!_sessionAlive(gen)) return false;
       detail.value = freshDetail;
       if (!(freshDetail.status || freshDetail.isRecord)) {
-        liveStatus.value = false;
+        liveStatus.value = LiveStatus.offline;
         return false;
       }
       // 记录用户当前选择的画质名，刷新后按名匹配
@@ -1033,8 +1038,8 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
 
   /// 复制新生成的直播流
   void copyPlayUrl() async {
-    // 未开播不复制
-    if (!liveStatus.value) {
+    // 未开播或状态未确认不复制
+    if (liveStatus.value != LiveStatus.live) {
       return;
     }
     if (currentQuality < 0 || currentQuality >= qualites.length) {

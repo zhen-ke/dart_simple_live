@@ -39,7 +39,8 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
   Rx<LiveRoomDetail?> detail = Rx<LiveRoomDetail?>(null);
   var online = 0.obs;
   var followed = false.obs;
-  var liveStatus = false.obs;
+  /// 开播状态三态：查询失败是 unknown，不能与 offline 混为一谈
+  var liveStatus = LiveStatus.unknown.obs;
 
   /// 清晰度数据
   RxList<LivePlayQuality> qualites = RxList<LivePlayQuality>();
@@ -206,7 +207,7 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
         return;
       }
 
-      if (!liveStatus.value || isBackground) {
+      if (liveStatus.value != LiveStatus.live || isBackground) {
         return;
       }
 
@@ -278,8 +279,10 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
 
       addHistory();
       online.value = detail.value!.online;
-      liveStatus.value = detail.value!.status || detail.value!.isRecord;
-      if (liveStatus.value) {
+      liveStatus.value = (detail.value!.status || detail.value!.isRecord)
+          ? LiveStatus.live
+          : LiveStatus.offline;
+      if (liveStatus.value == LiveStatus.live) {
         getPlayQualites();
       }
       if (detail.value!.isRecord) {
@@ -535,8 +538,8 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
         return;
       }
       if (!_sessionAlive(gen)) return;
-      // 刷新确认房间已下播（内部已标记 liveStatus=false）
-      if (!liveStatus.value) {
+      // 刷新确认房间已下播（内部已标记 offline）
+      if (liveStatus.value == LiveStatus.offline) {
         _endRecovery(succeeded: false);
         return;
       }
@@ -556,7 +559,7 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
       _endRecovery(succeeded: false);
       return;
     }
-    liveStatus.value = false;
+    liveStatus.value = LiveStatus.offline;
     if (error != null) {
       errorMsg.value = "播放失败";
       SmartDialog.showToast("播放失败:$error");
@@ -616,7 +619,7 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
       if (!_sessionAlive(gen)) return false;
       detail.value = freshDetail;
       if (!(freshDetail.status || freshDetail.isRecord)) {
-        liveStatus.value = false;
+        liveStatus.value = LiveStatus.offline;
         return false;
       }
       // 记录用户当前选择的画质名，刷新后按名匹配

@@ -9,6 +9,7 @@ export 'src/douyin_site.dart';
 export 'src/common/core_log.dart';
 export 'src/common/live_metrics.dart';
 export 'src/model/live_message.dart';
+export 'src/model/live_status.dart';
 export 'src/danmaku/bilibili_danmaku.dart';
 export 'src/danmaku/douyu_danmaku.dart';
 export 'src/danmaku/huya_danmaku.dart';

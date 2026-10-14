@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:simple_live_core/simple_live_core.dart';
 import 'package:simple_live_tv_app/app/app_style.dart';
 import 'package:simple_live_tv_app/app/controller/app_settings_controller.dart';
 import 'package:simple_live_tv_app/app/log.dart';
@@ -64,8 +65,9 @@ class LiveRoomPage extends GetView<LiveRoomController> {
     if (key.logicalKey == LogicalKeyboardKey.select ||
         key.logicalKey == LogicalKeyboardKey.enter ||
         key.logicalKey == LogicalKeyboardKey.space) {
-      // 播放失败状态下确认键优先作为重试
-      if (controller.liveStatus.value && controller.errorMsg.value.isNotEmpty) {
+      // 播放失败/状态未知时确认键优先作为重试；确认下播时不拦截
+      if (controller.liveStatus.value != LiveStatus.offline &&
+          controller.errorMsg.value.isNotEmpty) {
         controller.refreshRoom();
         return;
       }
@@ -148,8 +150,10 @@ class LiveRoomPage extends GetView<LiveRoomController> {
         ),
         Obx(
           () => Visibility(
+            // 仅在确认下播时显示：unknown（查询失败）不谎报未开播
             visible:
-                !controller.liveStatus.value && !controller.pageLoadding.value,
+                controller.liveStatus.value == LiveStatus.offline &&
+                    !controller.pageLoadding.value,
             child: Center(
               child: Text(
                 "未开播",
@@ -162,7 +166,7 @@ class LiveRoomPage extends GetView<LiveRoomController> {
         // 由断流兜底流程写入 errorMsg
         Obx(
           () => Visibility(
-            visible: controller.liveStatus.value &&
+            visible: controller.liveStatus.value != LiveStatus.offline &&
                 controller.errorMsg.value.isNotEmpty,
             child: Center(
               child: Column(

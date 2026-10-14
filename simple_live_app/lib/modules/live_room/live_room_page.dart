@@ -287,7 +287,8 @@ class LiveRoomPage extends GetView<LiveRoomController> {
         ),
         Obx(
           () => Visibility(
-            visible: !controller.liveStatus.value,
+            // 仅在确认下播时显示：unknown（查询失败）不谎报未开播
+            visible: controller.liveStatus.value == LiveStatus.offline,
             child: const Center(
               child: Text(
                 "未开播",
@@ -296,11 +297,11 @@ class LiveRoomPage extends GetView<LiveRoomController> {
             ),
           ),
         ),
-        // 播放失败/状态未知的重试入口：liveStatus 仍为 true
-        // 但流不可恢复时，由断流兜底流程写入 errorMsg
+        // 播放失败/状态未知的重试入口：断流兜底流程写入 errorMsg；
+        // 确认下播（offline）时错误信息让位于"未开播"遮罩
         Obx(
           () => Visibility(
-            visible: controller.liveStatus.value &&
+            visible: controller.liveStatus.value != LiveStatus.offline &&
                 controller.errorMsg.value.isNotEmpty,
             child: Center(
               child: Column(
