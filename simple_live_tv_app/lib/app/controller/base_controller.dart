@@ -105,7 +105,7 @@ class BasePageController<T> extends BaseController {
       pageEmpty.value = page == 1 && result.isEmpty;
       // 赋值数据
       if (page == 1) {
-        list.value = result;
+        list.value = List<T>.from(result);
       } else {
         list.addAll(result);
       }
