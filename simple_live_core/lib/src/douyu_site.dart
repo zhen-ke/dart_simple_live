@@ -128,7 +128,7 @@ class DouyuSite implements LiveSite {
         "enc_data=${Uri.encodeComponent(enc["enc_data"].toString())}"
         "&tt=$tt&did=$_deviceDid&auth=$auth"
         "&cdn=$cdn&rate=$rate&ver=Douyu_new&iar=0&ive=0&sov=0&hevc=1&fa=0";
-    return HttpClient.instance.postJson(
+    return await HttpClient.instance.postJson(
       "https://www.douyu.com/lapi/live/getH5PlayV1/$roomId",
       data: postData,
       header: {..._requestHeaders, 'referer': 'https://www.douyu.com/$roomId'},

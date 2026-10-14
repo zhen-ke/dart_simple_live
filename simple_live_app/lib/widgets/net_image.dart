@@ -38,9 +38,9 @@ class NetImage extends StatelessWidget {
         fit: fit,
         height: height,
         width: width,
-        memCacheWidth:
+        cacheWidth:
             width?.isFinite == true ? (width! * dpr).ceil() : null,
-        memCacheHeight:
+        cacheHeight:
             height?.isFinite == true ? (height! * dpr).ceil() : null,
         shape: BoxShape.rectangle,
         borderRadius: BorderRadius.circular(borderRadius),
