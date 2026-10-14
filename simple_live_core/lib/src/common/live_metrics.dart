@@ -13,6 +13,7 @@ class LiveMetrics {
   int _decodeFrames = 0;
   int _decodedMessages = 0;
   int _decodeTotalUs = 0;
+  int _decodeWallTotalUs = 0;
   int _decodeMaxUs = 0;
   int _nextDecodeLogAt = 2000;
 
@@ -20,10 +21,15 @@ class LiveMetrics {
   int danmakuDropped = 0;
 
   /// 记录一帧弹幕解码的耗时（一帧可能解码出多条消息）
-  void recordDanmakuDecode(Duration elapsed, {int messageCount = 0}) {
+  void recordDanmakuDecode(
+    Duration elapsed, {
+    int messageCount = 0,
+    Duration? wallElapsed,
+  }) {
     _decodeFrames++;
     _decodedMessages += messageCount;
     _decodeTotalUs += elapsed.inMicroseconds;
+    _decodeWallTotalUs += (wallElapsed ?? elapsed).inMicroseconds;
     if (elapsed.inMicroseconds > _decodeMaxUs) {
       _decodeMaxUs = elapsed.inMicroseconds;
     }
@@ -35,12 +41,34 @@ class LiveMetrics {
 
   void recordDanmakuDrop(int count) => danmakuDropped += count;
 
+  int get decodeFrameCount => _decodeFrames;
+  int get decodedMessageCount => _decodedMessages;
+  int get averageDecodeUs =>
+      _decodeFrames == 0 ? 0 : _decodeTotalUs ~/ _decodeFrames;
+  int get averageDecodeWallUs =>
+      _decodeFrames == 0 ? 0 : _decodeWallTotalUs ~/ _decodeFrames;
+
+  /// Start a fresh playback session's counters when entering/switching rooms.
+  void reset() {
+    _decodeFrames = 0;
+    _decodedMessages = 0;
+    _decodeTotalUs = 0;
+    _decodeWallTotalUs = 0;
+    _decodeMaxUs = 0;
+    _nextDecodeLogAt = 2000;
+    danmakuDropped = 0;
+    recoveryEpisodes = 0;
+    recoverySucceeded = 0;
+    recoveryExhausted = 0;
+    recoveryAttemptsTotal = 0;
+  }
+
   String danmakuSummary() {
     if (_decodeFrames == 0) {
       return '弹幕解码：暂无数据';
     }
     return '弹幕解码: $_decodedMessages条/$_decodeFrames帧, '
-        'avg=${_decodeTotalUs ~/ _decodeFrames}us/帧, '
+        'avg=${averageDecodeUs}us/帧 (wall ${averageDecodeWallUs}us), '
         'max=${_decodeMaxUs}us/帧, 预算丢弃=$danmakuDropped条';
   }
 

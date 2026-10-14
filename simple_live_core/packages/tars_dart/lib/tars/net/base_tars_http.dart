@@ -17,7 +17,7 @@ class BaseTarsHttp {
   final String servantName;
   final Map<String, String> headers;
 
-  var timeOut = 60000;
+  var timeOut = 60;
   var debugLog = false;
   late final Dio dio;
   final logger = Logger();
@@ -26,12 +26,14 @@ class BaseTarsHttp {
     this.baseUrl,
     this.servantName, {
     this.path = "",
-    this.timeOut = 60000,
+    this.timeOut = 60,
     this.debugLog = false,
     this.headers = const {},
   }) {
     dio = Dio(BaseOptions(
         connectTimeout: Duration(seconds: timeOut),
+        receiveTimeout: Duration(seconds: timeOut),
+        sendTimeout: Duration(seconds: timeOut),
         baseUrl: baseUrl,
         responseType: ResponseType.bytes,
         headers: {

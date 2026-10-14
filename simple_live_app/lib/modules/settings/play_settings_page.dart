@@ -56,21 +56,21 @@ class PlaySettingsPage extends GetView<AppSettingsController> {
                     ),
                   ),
                 ),
-                // AppStyle.divider,
-                // Obx(
-                //   () => SettingsNumber(
-                //     title: "缓冲区大小",
-                //     subtitle: "若播放卡顿可尝试调高此选项",
-                //     value: controller.playerBufferSize.value,
-                //     min: 32,
-                //     max: 1024,
-                //     step: 4,
-                //     unit: "MB",
-                //     onChanged: (e) {
-                //       controller.setPlayerBufferSize(e);
-                //     },
-                //   ),
-                // ),
+                AppStyle.divider,
+                Obx(
+                  () => SettingsNumber(
+                    title: "缓冲区大小",
+                    subtitle:
+                        "调大可提升抗卡顿能力，但会增加内存占用；"
+                        "下次进入直播间生效",
+                    value: controller.playerBufferSize.value,
+                    min: 4,
+                    max: 128,
+                    step: 4,
+                    unit: "MB",
+                    onChanged: controller.setPlayerBufferSize,
+                  ),
+                ),
                 AppStyle.divider,
                 Obx(
                   () => SettingsSwitch(

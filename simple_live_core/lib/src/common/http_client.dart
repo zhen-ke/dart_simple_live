@@ -32,6 +32,7 @@ class HttpClient {
     Map<String, dynamic>? queryParameters,
     Map<String, dynamic>? header,
     CancelToken? cancel,
+    Duration? timeout,
   }) async {
     try {
       queryParameters ??= {};
@@ -42,6 +43,9 @@ class HttpClient {
         options: Options(
           responseType: ResponseType.plain,
           headers: header,
+          connectTimeout: timeout,
+          receiveTimeout: timeout,
+          sendTimeout: timeout,
         ),
         cancelToken: cancel,
       );
@@ -65,6 +69,7 @@ class HttpClient {
     Map<String, dynamic>? queryParameters,
     Map<String, dynamic>? header,
     CancelToken? cancel,
+    Duration? timeout,
   }) async {
     try {
       queryParameters ??= {};
@@ -75,6 +80,9 @@ class HttpClient {
         options: Options(
           responseType: ResponseType.json,
           headers: header,
+          connectTimeout: timeout,
+          receiveTimeout: timeout,
+          sendTimeout: timeout,
         ),
         cancelToken: cancel,
       );
@@ -101,6 +109,7 @@ class HttpClient {
     Map<String, dynamic>? header,
     bool formUrlEncoded = false,
     CancelToken? cancel,
+    Duration? timeout,
   }) async {
     try {
       queryParameters ??= {};
@@ -115,6 +124,9 @@ class HttpClient {
           headers: header,
           contentType:
               formUrlEncoded ? Headers.formUrlEncodedContentType : null,
+          connectTimeout: timeout,
+          receiveTimeout: timeout,
+          sendTimeout: timeout,
         ),
         cancelToken: cancel,
       );
@@ -138,6 +150,7 @@ class HttpClient {
     Map<String, dynamic>? queryParameters,
     Map<String, dynamic>? header,
     CancelToken? cancel,
+    Duration? timeout,
   }) async {
     try {
       queryParameters ??= {};
@@ -148,6 +161,9 @@ class HttpClient {
         options: Options(
           headers: header,
           receiveDataWhenStatusError: true,
+          connectTimeout: timeout,
+          receiveTimeout: timeout,
+          sendTimeout: timeout,
         ),
         cancelToken: cancel,
       );

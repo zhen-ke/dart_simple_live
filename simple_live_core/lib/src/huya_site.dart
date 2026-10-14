@@ -25,8 +25,12 @@ class HuyaSite implements LiveSite {
       'User-Agent': HYSDK_UA,
   };
 
-  final BaseTarsHttp tupClient =
-  BaseTarsHttp("http://wup.huya.com", "liveui", headers: requestHeaders);
+  final BaseTarsHttp tupClient = BaseTarsHttp(
+    "http://wup.huya.com",
+    "liveui",
+    timeOut: 7,
+    headers: requestHeaders,
+  );
 
   String? playUserAgent;
   @override

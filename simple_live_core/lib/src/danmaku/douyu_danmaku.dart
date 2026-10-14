@@ -20,13 +20,16 @@ class DouyuDanmaku implements LiveDanmaku {
   String serverUrl = "wss://danmuproxy.douyu.com:8506";
 
   WebScoketUtils? webScoketUtils;
+  int _startGeneration = 0;
 
   @override
   Future start(dynamic args) async {
+    final startGeneration = ++_startGeneration;
     // danmakuData 允许传入在途 Future：连接前等待其就绪
     if (args is Future) {
       args = await args;
     }
+    if (startGeneration != _startGeneration) return;
     webScoketUtils = WebScoketUtils(
       url: serverUrl,
       heartBeatTime: heartbeatTime,
@@ -65,6 +68,7 @@ class DouyuDanmaku implements LiveDanmaku {
 
   @override
   Future stop() async {
+    _startGeneration++;
     onMessage = null;
     onClose = null;
     webScoketUtils?.close();

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:canvas_danmaku/models/danmaku_content_item.dart';
+import 'package:extended_image/extended_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
@@ -154,6 +155,7 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
 
   @override
   void onInit() {
+    LiveMetrics.instance.reset();
     WidgetsBinding.instance.addObserver(this);
     initTimer();
     showDanmakuState.value = AppSettingsController.instance.danmuEnable.value;
@@ -728,6 +730,7 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
       return;
     }
 
+    LiveMetrics.instance.reset();
     // 作废旧房间的一切在飞请求与断流恢复
     _sessionGen++;
     _playUrlGen++;
@@ -833,6 +836,7 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     _shieldPatternWorker = null;
 
     danmakuController = null;
+    clearMemoryImageCache();
     super.onClose();
   }
 }

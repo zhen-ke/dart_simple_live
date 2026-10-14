@@ -23,6 +23,7 @@ import 'package:simple_live_app/app/utils.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:simple_live_app/services/system_control_service.dart';
+import 'package:simple_live_core/simple_live_core.dart';
 
 mixin PlayerMixin {
   GlobalKey<VideoState> globalPlayerKey = GlobalKey<VideoState>();
@@ -76,14 +77,10 @@ mixin PlayerMixin {
       await pp.setProperty('force-seekable', 'yes');
     }
 
-    // 直播流参数：移动端同样限制回退缓存，避免长时间观看内存持续增长
-    final backBytes =
-        (AppSettingsController.instance.playerBufferSize.value * 1024 * 1024) ~/
-        2;
-    await pp.setProperty('demuxer-max-back-bytes', '$backBytes');
-    // 直播回退缓存可寻址，断流后可快速恢复
-    await pp.setProperty('demuxer-seekable-cache', 'yes');
-    // 目标缓存秒数（与 demuxer-max-bytes 共同约束直播缓冲，兼顾延迟与抖动恢复）
+    // 直播 FLV 断流恢复会重新取流，回退缓存没有实际收益；避免额外驻留。
+    await pp.setProperty('demuxer-max-back-bytes', '0');
+    await pp.setProperty('demuxer-seekable-cache', 'no');
+    // 秒数作为直播缓冲主约束，demuxer-max-bytes 仍提供大小上限。
     await pp.setProperty('cache-secs', '3');
     // 网络卡死时快速失败，交给上层切线路，而不是无限等待
     await pp.setProperty('network-timeout', '15');
@@ -977,8 +974,24 @@ class PlayerController extends BaseController
     WakelockPlus.disable();
   }
 
-  void showDebugInfo() {
-    Utils.showBottomSheet(
+  Future<void> showDebugInfo() async {
+    final nativePlayer = player.platform as NativePlayer;
+    final mpvProperties = await Future.wait([
+      _readMpvProperty(nativePlayer, 'video-codec'),
+      _readMpvProperty(nativePlayer, 'hwdec-current'),
+      _readMpvProperty(nativePlayer, 'demuxer-cache-state/fw-bytes'),
+      _readMpvProperty(nativePlayer, 'demuxer-cache-state/total-bytes'),
+      _readMpvProperty(nativePlayer, 'demuxer-cache-state/cache-duration'),
+    ]);
+    final codec = mpvProperties[0];
+    final hwdec = mpvProperties[1];
+    final cacheState = _formatDemuxerCache(
+      forwardBytes: mpvProperties[2],
+      totalBytes: mpvProperties[3],
+      duration: mpvProperties[4],
+    );
+
+    await Utils.showBottomSheet(
       title: "播放信息",
       child: ListView(
         children: [
@@ -1001,6 +1014,43 @@ class PlayerController extends BaseController
               Clipboard.setData(
                 ClipboardData(
                   text: "VideoParams\n${player.state.videoParams}",
+                ),
+              );
+            },
+          ),
+          ListTile(
+            title: const Text("Video codec"),
+            subtitle: Text(codec),
+            onTap: () => Clipboard.setData(ClipboardData(text: codec)),
+          ),
+          ListTile(
+            title: const Text("HW decoder (active)"),
+            subtitle: Text(hwdec),
+            onTap: () => Clipboard.setData(ClipboardData(text: hwdec)),
+          ),
+          ListTile(
+            title: const Text("Demuxer cache"),
+            subtitle: Text(cacheState),
+            onTap: () => Clipboard.setData(ClipboardData(text: cacheState)),
+          ),
+          ListTile(
+            title: const Text("弹幕解码指标"),
+            subtitle: Text(LiveMetrics.instance.danmakuSummary()),
+            onTap: () {
+              Clipboard.setData(
+                ClipboardData(
+                  text: LiveMetrics.instance.danmakuSummary(),
+                ),
+              );
+            },
+          ),
+          ListTile(
+            title: const Text("断流恢复指标"),
+            subtitle: Text(LiveMetrics.instance.recoverySummary()),
+            onTap: () {
+              Clipboard.setData(
+                ClipboardData(
+                  text: LiveMetrics.instance.recoverySummary(),
                 ),
               );
             },
@@ -1044,7 +1094,7 @@ class PlayerController extends BaseController
             onTap: () {
               Clipboard.setData(
                 ClipboardData(
-                  text: "VideoTrack\n${player.state.track.audio}",
+                  text: "VideoTrack\n${player.state.track.video}",
                 ),
               );
             },
@@ -1074,6 +1124,39 @@ class PlayerController extends BaseController
         ],
       ),
     );
+  }
+
+  Future<String> _readMpvProperty(
+    NativePlayer nativePlayer,
+    String property,
+  ) async {
+    try {
+      final value = await nativePlayer
+          .getProperty(property, waitForInitialization: false)
+          .timeout(const Duration(seconds: 1));
+      return value.trim().isEmpty ? '不可用' : value;
+    } catch (_) {
+      return '不可用';
+    }
+  }
+
+  String _formatDemuxerCache({
+    required String forwardBytes,
+    required String totalBytes,
+    required String duration,
+  }) {
+    final seconds = double.tryParse(duration);
+    final durationText = seconds == null
+        ? ''
+        : ', ${seconds.toStringAsFixed(1)}s cached';
+    return '${_formatCacheBytes(forwardBytes)} forward / '
+        '${_formatCacheBytes(totalBytes)} total$durationText';
+  }
+
+  String _formatCacheBytes(String value) {
+    final bytes = double.tryParse(value);
+    if (bytes == null) return 'N/A';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MiB';
   }
 
   @override

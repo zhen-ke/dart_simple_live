@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:extended_image/extended_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
@@ -188,6 +189,7 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
 
   @override
   void onInit() {
+    LiveMetrics.instance.reset();
     WidgetsBinding.instance.addObserver(this);
     if (FollowService.instance.followList.isEmpty) {
       FollowService.instance.loadData();
@@ -1443,6 +1445,7 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
       return;
     }
 
+    LiveMetrics.instance.reset();
     // 作废旧房间的一切在飞请求与断流恢复
     _sessionGen++;
     _playUrlGen++;
@@ -1543,6 +1546,7 @@ ${errorStackTrace ?? (error is Error ? (error as Error).stackTrace : "")}''');
     _liveDurationTimer?.cancel(); // 页面关闭时取消定时器
     _scPruneTimer?.cancel();
     _stablePlayTimer?.cancel();
+    clearMemoryImageCache();
     super.onClose();
   }
 }

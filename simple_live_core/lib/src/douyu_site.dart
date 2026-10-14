@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:dio/dio.dart' show CancelToken;
 import 'package:simple_live_core/src/common/core_error.dart';
 import 'package:simple_live_core/src/common/http_client.dart';
 import 'package:simple_live_core/src/danmaku/douyu_danmaku.dart';
@@ -22,6 +23,7 @@ import 'package:simple_live_core/src/common/core_log.dart';
 import 'package:simple_live_core/src/scripts/douyu_sign.dart';
 
 class DouyuSite implements LiveSite {
+  static const Duration _playRequestTimeout = Duration(seconds: 7);
   /// 可选的登录 Cookie。匿名播放仍支持，但匿名高画质拉流可能被
   /// 服务端限时掐断（约十分钟左右）。
   String _cookie = "";
@@ -69,6 +71,7 @@ class DouyuSite implements LiveSite {
       "https://www.douyu.com/wgapi/livenc/liveweb/websec/getEncryption",
       queryParameters: {"did": _deviceDid},
       header: _requestHeaders,
+      timeout: _playRequestTimeout,
     );
     if (result["error"] != 0) {
       throw CoreError("斗鱼加密包获取失败:${result["msg"]}");
@@ -98,7 +101,12 @@ class DouyuSite implements LiveSite {
   /// 统一取流请求：先走老 getH5Play 接口，失败/异常时兜底 getH5PlayV1
   /// （官方前端已全面迁移 V1；响应 data 结构与 V0 一致）
   Future<Map> _postH5Play(
-      String roomId, String args, String cdn, int rate) async {
+    String roomId,
+    String args,
+    String cdn,
+    int rate, {
+    CancelToken? cancel,
+  }) async {
     if (!_preferV1) {
       try {
         var result = await HttpClient.instance.postJson(
@@ -109,6 +117,8 @@ class DouyuSite implements LiveSite {
             'referer': 'https://www.douyu.com/$roomId'
           },
           formUrlEncoded: true,
+          cancel: cancel,
+          timeout: _playRequestTimeout,
         );
         if (result["error"] == null || result["error"].toString() == "0") {
           return result;
@@ -127,12 +137,14 @@ class DouyuSite implements LiveSite {
     var postData =
         "enc_data=${Uri.encodeComponent(enc["enc_data"].toString())}"
         "&tt=$tt&did=$_deviceDid&auth=$auth"
-        "&cdn=$cdn&rate=$rate&ver=Douyu_new&iar=0&ive=0&sov=0&hevc=1&fa=0";
+        "&cdn=$cdn&rate=$rate&ver=Douyu_new&iar=0&ive=0&sov=0&hevc=0&fa=0";
     return await HttpClient.instance.postJson(
       "https://www.douyu.com/lapi/live/getH5PlayV1/$roomId",
       data: postData,
       header: {..._requestHeaders, 'referer': 'https://www.douyu.com/$roomId'},
       formUrlEncoded: true,
+      cancel: cancel,
+      timeout: _playRequestTimeout,
     );
   }
 
@@ -312,9 +324,23 @@ class DouyuSite implements LiveSite {
     // 比串行少等 (n-1) 个 RTT
     final results = await Future.wait(
       data.cdns.map((item) async {
+        final cancel = CancelToken();
         try {
-          return await getPlayUrl(detail.roomId, args, data.rate, item);
+          return await getPlayUrl(
+            detail.roomId,
+            args,
+            data.rate,
+            item,
+            cancel: cancel,
+          ).timeout(
+            _playRequestTimeout,
+            onTimeout: () {
+              cancel.cancel('CDN play URL request timed out');
+              return '';
+            },
+          );
         } catch (_) {
+          cancel.cancel('CDN play URL request failed');
           return "";
         }
       }),
@@ -326,10 +352,17 @@ class DouyuSite implements LiveSite {
     String roomId,
     String args,
     int rate,
-    String cdn,
-  ) async {
+    String cdn, {
+    CancelToken? cancel,
+  }) async {
     args += "&cdn=$cdn&rate=$rate";
-    var result = await _postH5Play(roomId, args, cdn, rate);
+    var result = await _postH5Play(
+      roomId,
+      args,
+      cdn,
+      rate,
+      cancel: cancel,
+    );
     if (result["error"] != null && result["error"].toString() != "0") {
       throw CoreError("斗鱼播放地址请求失败：${result["msg"] ?? result["error"]}");
     }
@@ -375,6 +408,7 @@ class DouyuSite implements LiveSite {
           ..._requestHeaders,
           'referer': 'https://www.douyu.com/$roomId',
         },
+        timeout: _playRequestTimeout,
       );
       var decoded = json.decode(jsEncResult);
       var payload = decoded is Map ? decoded["data"] : null;

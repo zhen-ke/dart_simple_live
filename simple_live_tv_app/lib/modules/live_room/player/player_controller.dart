@@ -54,12 +54,10 @@ mixin PlayerMixin {
       await pp.setProperty('force-seekable', 'yes');
     }
 
-    // 直播流参数
-    final backBytes =
-        (AppSettingsController.instance.playerBufferSize.value * 1024 * 1024) ~/
-        2;
-    await pp.setProperty('demuxer-max-back-bytes', '$backBytes');
-    await pp.setProperty('demuxer-seekable-cache', 'yes');
+    // 直播 FLV 断流恢复会重新取流，回退缓存没有实际收益；避免额外驻留。
+    await pp.setProperty('demuxer-max-back-bytes', '0');
+    await pp.setProperty('demuxer-seekable-cache', 'no');
+    // 秒数作为直播缓冲主约束，demuxer-max-bytes 仍提供大小上限。
     await pp.setProperty('cache-secs', '3');
     await pp.setProperty('network-timeout', '15');
     await pp.setProperty(

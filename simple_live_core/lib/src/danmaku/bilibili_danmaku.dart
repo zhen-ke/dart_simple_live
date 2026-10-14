@@ -1,11 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:brotli/brotli.dart';
 import 'package:simple_live_core/simple_live_core.dart';
-import 'package:simple_live_core/src/common/convert_helper.dart';
+import 'package:simple_live_core/src/common/danmaku_decode_worker.dart';
 import 'package:simple_live_core/src/common/web_socket_util.dart';
 
 import '../common/binary_writer.dart';
@@ -53,13 +51,17 @@ class BiliBiliDanmaku implements LiveDanmaku {
 
   WebScoketUtils? webScoketUtils;
   late BiliBiliDanmakuArgs danmakuArgs;
+  int _startGeneration = 0;
+  DanmakuDecodeWorker? _decoderWorker;
   @override
   Future start(dynamic args) async {
+    final startGeneration = ++_startGeneration;
     // danmakuData 允许传入在途 Future：详情先返回让视频起播，
     // 弹幕参数并行解析，连接前等待其就绪
     if (args is Future) {
       args = await args;
     }
+    if (startGeneration != _startGeneration) return;
     danmakuArgs = args as BiliBiliDanmakuArgs;
     webScoketUtils = WebScoketUtils(
       url: "wss://${args.serverHost}/sub",
@@ -115,9 +117,12 @@ class BiliBiliDanmaku implements LiveDanmaku {
 
   @override
   Future stop() async {
+    _startGeneration++;
     onMessage = null;
     onClose = null;
     webScoketUtils?.close();
+    _decoderWorker?.dispose();
+    _decoderWorker = null;
   }
 
   List<int> encodeData(String msg, int action) {
@@ -149,127 +154,82 @@ class BiliBiliDanmaku implements LiveDanmaku {
   }
 
   void decodeMessage(List<int> data) {
-    var sw = Stopwatch()..start();
-    var msgCount = 0;
-    try {
-      //协议版本。0为JSON，可以直接解析；1为房间人气值,Body为4位Int32；2为压缩过Buffer，需要解压再处理
-      int protocolVersion = readInt(data, 6, 2);
-      //操作类型。3=心跳回应，内容为房间人气值；5=通知，弹幕、广播等全部信息；8=进房回应，空
-      int operation = readInt(data, 8, 4);
-      //内容
-      var body = data.skip(16).toList();
-      if (operation == 3) {
-        var online = readInt(body, 0, 4);
-
-        onMessage?.call(
-          LiveMessage(
-            type: LiveMessageType.online,
-            data: online,
-            color: LiveMessageColor.white,
-            message: "",
-            userName: "",
-          ),
+    final generation = _startGeneration;
+    final wallTime = Stopwatch()..start();
+    final decoder = _decoderWorker ??= DanmakuDecodeWorker();
+    unawaited(
+      decoder.decodeBilibili(data).then<void>((decoded) {
+        wallTime.stop();
+        if (generation != _startGeneration) return;
+        final elapsed = Duration(
+          microseconds: (decoded['elapsedUs'] as num?)?.toInt() ?? 0,
         );
-      } else if (operation == 5) {
-        if (protocolVersion == 2) {
-          body = zlib.decode(body);
-        } else if (protocolVersion == 3) {
-          body = brotli.decode(body);
-        }
-
-        var text = utf8.decode(body, allowMalformed: true);
-
-        var group =
-            text.split(RegExp(r"[\x00-\x1f]+", unicode: true, multiLine: true));
-        for (var item
-            in group.where((x) => x.length > 2 && x.startsWith('{'))) {
-          msgCount++;
-          parseMessage(item);
-        }
-      }
-    } catch (e) {
-      CoreLog.error(e);
-    } finally {
-      sw.stop();
-      LiveMetrics.instance
-          .recordDanmakuDecode(sw.elapsed, messageCount: msgCount);
-    }
-  }
-
-  void parseMessage(String jsonMessage) {
-    try {
-      var obj = json.decode(jsonMessage);
-      var cmd = obj["cmd"].toString();
-      if (cmd.contains("DANMU_MSG")) {
-        if (obj["info"] != null && obj["info"].length != 0) {
-          var message = obj["info"][1].toString();
-          var color = asT<int?>(obj["info"][0][3]) ?? 0;
-          if (obj["info"][2] != null && obj["info"][2].length != 0) {
-            var username = obj["info"][2][1].toString();
-            var liveMsg = LiveMessage(
-              type: LiveMessageType.chat,
-              userName: username,
-              message: message,
-              color: color == 0
-                  ? LiveMessageColor.white
-                  : LiveMessageColor.numberToColor(color),
-            );
-            onMessage?.call(liveMsg);
+        final messages = decoded['messages'] as List? ?? const [];
+        LiveMetrics.instance.recordDanmakuDecode(
+          elapsed,
+          messageCount: (decoded['messageCount'] as num?)?.toInt() ?? 0,
+          wallElapsed: wallTime.elapsed,
+        );
+        if (decoded['error'] != null) CoreLog.error(decoded['error']);
+        for (final raw in messages) {
+          if (raw is! Map) continue;
+          switch (raw['kind']) {
+            case 'online':
+              onMessage?.call(
+                LiveMessage(
+                  type: LiveMessageType.online,
+                  data: raw['data'],
+                  color: LiveMessageColor.white,
+                  message: '',
+                  userName: '',
+                ),
+              );
+              break;
+            case 'chat':
+              final color = (raw['color'] as num?)?.toInt() ?? 0;
+              onMessage?.call(
+                LiveMessage(
+                  type: LiveMessageType.chat,
+                  userName: raw['userName'].toString(),
+                  message: raw['message'].toString(),
+                  color: color == 0
+                      ? LiveMessageColor.white
+                      : LiveMessageColor.numberToColor(color),
+                ),
+              );
+              break;
+            case 'superChat':
+              final superChat = LiveSuperChatMessage(
+                backgroundBottomColor:
+                    raw['backgroundBottomColor'].toString(),
+                backgroundColor: raw['backgroundColor'].toString(),
+                endTime: DateTime.fromMillisecondsSinceEpoch(
+                  (raw['endTimeMs'] as num).toInt(),
+                ),
+                face: raw['face'].toString(),
+                message: raw['message'].toString(),
+                price: (raw['price'] as num).toInt(),
+                startTime: DateTime.fromMillisecondsSinceEpoch(
+                  (raw['startTimeMs'] as num).toInt(),
+                ),
+                userName: raw['userName'].toString(),
+              );
+              onMessage?.call(
+                LiveMessage(
+                  type: LiveMessageType.superChat,
+                  userName: 'SUPER_CHAT_MESSAGE',
+                  message: 'SUPER_CHAT_MESSAGE',
+                  color: LiveMessageColor.white,
+                  data: superChat,
+                ),
+              );
+              break;
           }
         }
-      } else if (cmd == "SUPER_CHAT_MESSAGE") {
-        if (obj["data"] == null) {
-          return;
-        }
-        LiveSuperChatMessage sc = LiveSuperChatMessage(
-          backgroundBottomColor:
-              obj["data"]["background_bottom_color"].toString(),
-          backgroundColor: obj["data"]["background_color"].toString(),
-          endTime: DateTime.fromMillisecondsSinceEpoch(
-            obj["data"]["end_time"] * 1000,
-          ),
-          face: "${obj["data"]["user_info"]["face"]}@200w.jpg",
-          message: obj["data"]["message"].toString(),
-          price: obj["data"]["price"],
-          startTime: DateTime.fromMillisecondsSinceEpoch(
-            obj["data"]["start_time"] * 1000,
-          ),
-          userName: obj["data"]["user_info"]["uname"].toString(),
-        );
-        var liveMsg = LiveMessage(
-          type: LiveMessageType.superChat,
-          userName: "SUPER_CHAT_MESSAGE",
-          message: "SUPER_CHAT_MESSAGE",
-          color: LiveMessageColor.white,
-          data: sc,
-        );
-        onMessage?.call(liveMsg);
-      }
-    } catch (e) {
-      CoreLog.error(e);
-    }
-  }
-
-  int readInt(List<int> buffer, int start, int len) {
-    var bytes =
-        Uint8List.fromList(buffer.getRange(start, start + len).toList());
-    var byteBuffer = bytes.buffer;
-    var data = ByteData.view(byteBuffer);
-    var result = 0;
-
-    if (len == 1) {
-      result = data.getUint8(0);
-    }
-    if (len == 2) {
-      result = data.getInt16(0, Endian.big);
-    }
-    if (len == 4) {
-      result = data.getInt32(0, Endian.big);
-    }
-    if (len == 8) {
-      result = data.getInt64(0, Endian.big);
-    }
-
-    return result;
+      }).catchError((Object error, StackTrace stackTrace) {
+        wallTime.stop();
+        if (generation == _startGeneration) CoreLog.error(error);
+      }),
+    );
   }
 }

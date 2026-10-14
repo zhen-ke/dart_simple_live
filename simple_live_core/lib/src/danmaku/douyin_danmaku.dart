@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
+
+import 'package:fixnum/fixnum.dart';
 import 'package:simple_live_core/simple_live_core.dart';
+import 'package:simple_live_core/src/common/danmaku_decode_worker.dart';
 import 'package:simple_live_core/src/common/web_socket_util.dart';
 import 'package:simple_live_core/src/scripts/douyin_sign.dart';
 
@@ -42,14 +44,18 @@ class DouyinDanmaku implements LiveDanmaku {
   String serverUrl = "wss://webcast3-ws-web-lq.douyin.com/webcast/im/push/v2/";
   late DouyinDanmakuArgs danmakuArgs;
   WebScoketUtils? webScoketUtils;
+  int _startGeneration = 0;
+  DanmakuDecodeWorker? _decoderWorker;
 
   @override
   Future start(dynamic args) async {
+    final startGeneration = ++_startGeneration;
     // danmakuData 允许传入在途 Future：详情先返回让视频起播，
     // 弹幕参数并行解析，连接前等待其就绪
     if (args is Future) {
       args = await args;
     }
+    if (startGeneration != _startGeneration) return;
     danmakuArgs = args as DouyinDanmakuArgs;
     var ts = DateTime.now().millisecondsSinceEpoch;
     var uri = Uri.parse(serverUrl).replace(
@@ -133,42 +139,54 @@ class DouyinDanmaku implements LiveDanmaku {
     webScoketUtils?.sendMessage(obj.writeToBuffer());
   }
 
-  void decodeMessage(args) {
-    var sw = Stopwatch()..start();
-    var msgCount = 0;
-    try {
-      var wssPackage = PushFrame.fromBuffer(args);
-      // 心跳回包等无载荷帧不参与消息解码
-      if (wssPackage.payload.isEmpty) {
-        return;
-      }
-      var logId = wssPackage.logId;
-      var decompressed = gzip.decode(wssPackage.payload);
-      var payloadPackage = Response.fromBuffer(decompressed);
-      if (payloadPackage.needAck) {
-        sendAck(logId, payloadPackage.internalExt);
-        //return;
-      }
-      msgCount = payloadPackage.messagesList.length;
-      // 单条消息解析失败不应影响同帧的其他消息
-      for (var msg in payloadPackage.messagesList) {
-        try {
-          if (msg.method == 'WebcastChatMessage') {
-            unPackWebcastChatMessage(msg.payload);
-          } else if (msg.method == 'WebcastRoomUserSeqMessage') {
-            unPackWebcastRoomUserSeqMessage(msg.payload);
-          }
-        } catch (e) {
-          CoreLog.error(e);
+  void decodeMessage(List<int> data) {
+    final generation = _startGeneration;
+    final wallTime = Stopwatch()..start();
+    final decoder = _decoderWorker ??= DanmakuDecodeWorker();
+    unawaited(
+      decoder.decodeDouyin(data).then<void>((decoded) {
+        wallTime.stop();
+        if (generation != _startGeneration) return;
+        final messages = decoded['messages'] as List? ?? const [];
+        LiveMetrics.instance.recordDanmakuDecode(
+          Duration(
+            microseconds: (decoded['elapsedUs'] as num?)?.toInt() ?? 0,
+          ),
+          messageCount: (decoded['messageCount'] as num?)?.toInt() ?? 0,
+          wallElapsed: wallTime.elapsed,
+        );
+        if (decoded['error'] != null) CoreLog.error(decoded['error']);
+        if (decoded['needAck'] == true) {
+          sendAck(decoded['logId'], decoded['internalExt'].toString());
         }
-      }
-    } catch (e) {
-      CoreLog.error(e);
-    } finally {
-      sw.stop();
-      LiveMetrics.instance
-          .recordDanmakuDecode(sw.elapsed, messageCount: msgCount);
-    }
+        for (final raw in messages) {
+          if (raw is! Map) continue;
+          if (raw['kind'] == 'chat') {
+            onMessage?.call(
+              LiveMessage(
+                type: LiveMessageType.chat,
+                color: LiveMessageColor.white,
+                message: raw['message'].toString(),
+                userName: raw['userName'].toString(),
+              ),
+            );
+          } else if (raw['kind'] == 'online') {
+            onMessage?.call(
+              LiveMessage(
+                type: LiveMessageType.online,
+                data: raw['data'],
+                color: LiveMessageColor.white,
+                message: '',
+                userName: '',
+              ),
+            );
+          }
+        }
+      }).catchError((Object error, StackTrace stackTrace) {
+        wallTime.stop();
+        if (generation == _startGeneration) CoreLog.error(error);
+      }),
+    );
   }
 
   void unPackWebcastChatMessage(List<int> payload) {
@@ -201,10 +219,16 @@ class DouyinDanmaku implements LiveDanmaku {
     );
   }
 
-  void sendAck(var logId, String internalExt) {
+  void sendAck(dynamic logId, String internalExt) {
     var obj = PushFrame();
     obj.payloadType = 'ack';
-    obj.logId = logId;
+    if (logId is Int64) {
+      obj.logId = logId;
+    } else if (logId is int) {
+      obj.logId = Int64(logId);
+    } else {
+      obj.logId = Int64.parseInt(logId.toString());
+    }
     // ACK 载荷是 internalExt 的字节流，写入 payload 字段
     // （proto 中 payloadType=7 与 payload=8 是两个字段）
     obj.payload = utf8.encode(internalExt);
@@ -219,8 +243,11 @@ class DouyinDanmaku implements LiveDanmaku {
 
   @override
   Future stop() async {
+    _startGeneration++;
     onMessage = null;
     onClose = null;
     webScoketUtils?.close();
+    _decoderWorker?.dispose();
+    _decoderWorker = null;
   }
 }

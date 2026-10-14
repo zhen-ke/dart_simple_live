@@ -44,13 +44,16 @@ class HuyaDanmaku implements LiveDanmaku {
   final heartbeatData = base64.decode("ABQdAAwsNgBM");
 
   late HuyaDanmakuArgs danmakuArgs;
+  int _startGeneration = 0;
 
   @override
   Future start(dynamic args) async {
+    final startGeneration = ++_startGeneration;
     // danmakuData 允许传入在途 Future：连接前等待其就绪
     if (args is Future) {
       args = await args;
     }
+    if (startGeneration != _startGeneration) return;
     danmakuArgs = args as HuyaDanmakuArgs;
     webScoketUtils = WebScoketUtils(
       url: serverUrl,
@@ -110,6 +113,7 @@ class HuyaDanmaku implements LiveDanmaku {
 
   @override
   Future stop() async {
+    _startGeneration++;
     onMessage = null;
     onClose = null;
     webScoketUtils?.close();
