@@ -117,6 +117,12 @@ mixin PlayerMixin {
   );
 }
 
+/// 控制器可见性评估周期
+const Duration _kControlsEvaluateInterval = Duration(milliseconds: 250);
+
+/// 空闲满多少拍后自动隐藏控制器（8 × 250ms = 2s）
+const int _kControlsHideDelayTicks = 8;
+
 mixin PlayerStateMixin on PlayerMixin {
   ///音量控制条计时器
   Timer? hidevolumeTimer;
@@ -154,24 +160,20 @@ mixin PlayerStateMixin on PlayerMixin {
   /// 提示底部Tip文本
   RxString bottomTipText = "".obs;
 
-  /// 自动隐藏控制器计时器
-  Timer? hideControlsTimer;
+  /// 控制器可见性评估定时器：周期性根据「空闲拍数」推导显隐，
+  /// 交互事件只负责重置计数——不存在计时器被取消后无人重武装的死态
+  /// - 点击视频/控制条、指针在播放区或控制条上移动，都会重置空闲计数
+  /// - 空闲满 [_kControlsHideDelayTicks] 拍自动隐藏，指针停在控制条上也不例外
+  /// - 锁定时暂停自动隐藏，锁定按钮的显隐完全由点击控制
+  int _controlsIdleTicks = _kControlsHideDelayTicks; // 初始视为已空闲
+  Timer? _controlsEvaluateTimer;
 
-  /// 桌面端：鼠标是否正悬停在控制条上（悬停期间不自动隐藏）
-  bool _hoveringControlsBar = false;
+  /// 控制条（毛玻璃气泡/底栏）上的指针移入/移动/移出：均视为交互
+  void onControlsBarEnter(PointerEnterEvent event) => markControlsActivity();
 
-  /// 控制条（毛玻璃气泡/底栏）上的鼠标移入
-  void onControlsBarEnter(PointerEnterEvent event) {
-    _hoveringControlsBar = true;
-    hideControlsTimer?.cancel();
-    showControlsState.value = true;
-  }
+  void onControlsBarHover(PointerHoverEvent event) => markControlsActivity();
 
-  /// 控制条上的鼠标移出：回到视频区，恢复自动隐藏计时
-  void onControlsBarExit(PointerExitEvent event) {
-    _hoveringControlsBar = false;
-    resetHideControlsTimer();
-  }
+  void onControlsBarExit(PointerExitEvent event) => markControlsActivity();
 
   /// 自动隐藏提示计时器
   Timer? hideSeekTipTimer;
@@ -190,44 +192,55 @@ mixin PlayerStateMixin on PlayerMixin {
   var showQualites = false.obs;
   var showLines = false.obs;
 
-  /// 隐藏控制器
+  /// 隐藏控制器（点击切换/锁定/小窗等主动隐藏）
   void hideControls() {
+    _controlsIdleTicks = _kControlsHideDelayTicks;
     showControlsState.value = false;
-    hideControlsTimer?.cancel();
   }
 
   void setLockState() {
     lockControlsState.value = !lockControlsState.value;
     if (lockControlsState.value) {
-      showControlsState.value = false;
+      hideControls();
     } else {
+      showControls();
+    }
+  }
+
+  /// 显示控制器（主动操作：单击视频、解锁），不受锁定状态限制
+  void showControls() {
+    _controlsIdleTicks = 0;
+    showControlsState.value = true;
+  }
+
+  /// 记录一次控制器交互：重置空闲计数，未锁定时立即显示
+  /// - 桌面端指针移动（播放区/控制条）、控制条上的按下都走这里
+  void markControlsActivity() {
+    _controlsIdleTicks = 0;
+    if (!lockControlsState.value && !showControlsState.value) {
       showControlsState.value = true;
     }
   }
 
-  /// 显示控制器
-  void showControls() {
-    showControlsState.value = true;
-    resetHideControlsTimer();
+  /// 启动可见性评估器（进房时调用一次）
+  void startControlsEvaluator() {
+    _controlsEvaluateTimer?.cancel();
+    _controlsEvaluateTimer = Timer.periodic(
+      _kControlsEvaluateInterval,
+      (_) => _evaluateControlsVisibility(),
+    );
   }
 
-  /// 开始隐藏控制器计时
-  /// - 当点击控制器上时功能时需要重新计时
-  void resetHideControlsTimer() {
-    hideControlsTimer?.cancel();
-
-    hideControlsTimer = Timer(
-      const Duration(
-        seconds: 2,
-      ),
-      () {
-        // 指针悬停在控制条上时不隐藏（条形控件会吸收命中，
-        // 底层播放区收不到 hover，计时器会误触发）
-        if (!_hoveringControlsBar) {
-          hideControls();
-        }
-      },
-    );
+  /// 周期推导控制器可见性：空闲满 2 秒自动隐藏；锁定时只累计不应用
+  void _evaluateControlsVisibility() {
+    if (_controlsIdleTicks < _kControlsHideDelayTicks) {
+      _controlsIdleTicks++;
+    }
+    if (lockControlsState.value) return;
+    final visible = _controlsIdleTicks < _kControlsHideDelayTicks;
+    if (visible != showControlsState.value) {
+      showControlsState.value = visible;
+    }
   }
 
   void updateScaleMode() {
@@ -434,8 +447,8 @@ mixin PlayerSystemMixin on PlayerMixin, PlayerStateMixin, PlayerDanmakuMixin {
     // 屏幕常亮
     //WakelockPlus.enable();
 
-    // 开始隐藏计时
-    resetHideControlsTimer();
+    // 启动控制器可见性评估
+    startControlsEvaluator();
     _startDesktopFullScreenSync();
 
     // 进入全屏模式
@@ -659,7 +672,7 @@ mixin PlayerSystemMixin on PlayerMixin, PlayerStateMixin, PlayerDanmakuMixin {
     }
     danmakuController?.clear();
     //关闭控制器
-    showControlsState.value = false;
+    hideControls();
 
     //监听事件
     var width = player.state.width ?? 0;
@@ -702,25 +715,19 @@ mixin PlayerGestureControlMixin
 
   //桌面端操控
   void onEnter(PointerEnterEvent event) {
-    if (!showControlsState.value) {
-      showControls();
-    }
+    markControlsActivity();
   }
 
   void onExit(PointerExitEvent event) {
+    // 指针离开播放区（窗口/播放器范围）立即隐藏
     if (showControlsState.value) {
       hideControls();
     }
   }
 
-  void onHover(PointerHoverEvent event, BuildContext context) {
-    // 桌面端约定：鼠标一动就显示控制条，由 resetHideControlsTimer 在静止后隐藏
-    // （不再限制只在顶/底 25% 区域才显示，避免“鼠标在中间移动但控制条不出现”的卡顿感）
-    if (!showControlsState.value) {
-      showControls();
-    } else {
-      resetHideControlsTimer();
-    }
+  void onHover(PointerHoverEvent event) {
+    // 桌面端约定：鼠标一动就显示控制条，静止后由评估器自动隐藏
+    markControlsActivity();
   }
 
   /// 双击全屏/退出全屏
@@ -1172,7 +1179,7 @@ class PlayerController extends BaseController
     disposeDanmakuController();
     _keyboardVolumeTipTimer?.cancel();
     hidevolumeTimer?.cancel();
-    hideControlsTimer?.cancel();
+    _controlsEvaluateTimer?.cancel();
     hideSeekTipTimer?.cancel();
     _playerFocusNode?.dispose();
     _playerFocusNode = null;

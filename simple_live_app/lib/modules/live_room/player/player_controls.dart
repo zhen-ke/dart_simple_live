@@ -95,9 +95,7 @@ Widget buildFullControls(
             onVerticalDragEnd: controller.onVerticalDragEnd,
             child: MouseRegion(
               onEnter: controller.onEnter,
-              onHover: (PointerHoverEvent event) {
-                controller.onHover(event, videoState.context);
-              },
+              onHover: controller.onHover,
               child: Container(
                 width: double.infinity,
                 height: double.infinity,
@@ -603,7 +601,8 @@ void _cycleQuality(LiveRoomController controller) {
 
 /// 毛玻璃胶囊容器：ClipRRect + BackdropFilter 模糊背后内容
 /// - 用于全屏播放器顶部/底部控制条，营造 macOS 原生 vibrancy 观感
-/// - 内包 MouseRegion：鼠标悬停在控制条上时阻止自动隐藏
+/// - 内包 Listener + MouseRegion：控制条上的按下与指针移动均记为交互，
+///   刷新自动隐藏计时（指针停在控制条上不动仍会按时隐藏）
 class _FrostedBar extends StatelessWidget {
   final Widget child;
   final LiveRoomController controller;
@@ -619,10 +618,14 @@ class _FrostedBar extends StatelessWidget {
       borderRadius: BorderRadius.circular(radius),
       child: BackdropFilter(
         filter: ui.ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-        child: MouseRegion(
-          onEnter: controller.onControlsBarEnter,
-          onExit: controller.onControlsBarExit,
-          child: child,
+        child: Listener(
+          onPointerDown: (_) => controller.markControlsActivity(),
+          child: MouseRegion(
+            onEnter: controller.onControlsBarEnter,
+            onHover: controller.onControlsBarHover,
+            onExit: controller.onControlsBarExit,
+            child: child,
+          ),
         ),
       ),
     );
@@ -697,9 +700,7 @@ Widget buildControls(
           //onLongPress: controller.showDebugInfo,
           child: MouseRegion(
             onEnter: controller.onEnter,
-            onHover: (PointerHoverEvent event) {
-              controller.onHover(event, videoState.context);
-            },
+            onHover: controller.onHover,
             child: Container(
               width: double.infinity,
               height: double.infinity,
@@ -715,10 +716,13 @@ Widget buildControls(
           bottom: controller.showControlsState.value ? 12 : -64,
           duration: const Duration(milliseconds: 220),
           curve: Curves.easeOutCubic,
-          child: MouseRegion(
-            onEnter: controller.onControlsBarEnter,
-            onExit: controller.onControlsBarExit,
-            child: Container(
+          child: Listener(
+            onPointerDown: (_) => controller.markControlsActivity(),
+            child: MouseRegion(
+              onEnter: controller.onControlsBarEnter,
+              onHover: controller.onControlsBarHover,
+              onExit: controller.onControlsBarExit,
+              child: Container(
               height: 44,
               padding: const EdgeInsets.symmetric(horizontal: 8),
             decoration: BoxDecoration(
@@ -884,6 +888,7 @@ Widget buildControls(
                 ),
               ],
             ),
+          ),
           ),
           ),
         ),
