@@ -696,6 +696,8 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
       // 初始化期间取流请求可能已被更新的一次取代
       if (!_sessionAlive(gen) || req != _playUrlGen) return;
 
+      // 按当前线路的实际流类型校正 cache-secs（FLV/HLS 预读不同）
+      await applyDemuxerCacheSecsFor(playUrls[currentLineIndex]);
       _openIssuedAt = DateTime.now();
       await player.open(Playlist(_buildMediaList()));
     } catch (e) {
@@ -714,6 +716,8 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     currentLineInfo.value = "线路${currentLineIndex + 1}";
     errorMsg.value = "";
 
+    // 按当前线路的实际流类型校正 cache-secs（FLV/HLS 预读不同）
+    await applyDemuxerCacheSecsFor(playUrls[currentLineIndex]);
     _openIssuedAt = DateTime.now();
     await player.open(Playlist(_buildMediaList()));
     if (!_sessionAlive(gen)) return;
@@ -727,6 +731,8 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     currentLineInfo.value = "线路${currentLineIndex + 1}";
     errorMsg.value = "";
 
+    // 按当前线路的实际流类型校正 cache-secs（FLV/HLS 预读不同）
+    await applyDemuxerCacheSecsFor(playUrls[currentLineIndex]);
     _openIssuedAt = DateTime.now();
     await player.jump(currentLineIndex);
   }

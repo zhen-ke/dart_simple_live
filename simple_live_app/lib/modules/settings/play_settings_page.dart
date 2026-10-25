@@ -61,7 +61,7 @@ class PlaySettingsPage extends GetView<AppSettingsController> {
                   () => SettingsNumber(
                     title: "缓冲区大小",
                     subtitle:
-                        "调大可提升抗卡顿能力，但会增加内存占用；"
+                        "调大可提升抗卡顿能力，但会增大直播延迟与内存占用；"
                         "下次进入直播间生效",
                     value: controller.playerBufferSize.value,
                     min: 4,

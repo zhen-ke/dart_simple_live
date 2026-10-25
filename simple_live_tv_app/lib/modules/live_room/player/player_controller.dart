@@ -12,6 +12,16 @@ import 'package:simple_live_tv_app/app/controller/app_settings_controller.dart';
 import 'package:simple_live_tv_app/app/log.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+/// 缓冲区大小(MB)映射为 demuxer 预读秒数（cache-secs）：
+/// 每 4MB 折 1 秒，默认 8MB→3s 维持原有低延迟，30 秒封顶。
+/// demuxer-max-bytes 只是容量上限，低码率流会先被秒数卡住，
+/// 不联动时调大缓冲区设置实际不生效。HLS 分片粒度大，
+/// 3 秒预读容易反复 underrun，下限提高到 6 秒。
+int demuxerCacheSecs(int bufferMb, {bool isHls = false}) {
+  final secs = (bufferMb / 4).round().clamp(3, 30).toInt();
+  return isHls && secs < 6 ? 6 : secs;
+}
+
 mixin PlayerMixin {
   GlobalKey<VideoState> globalPlayerKey = GlobalKey<VideoState>();
   GlobalKey globalDanmuKey = GlobalKey();
@@ -57,15 +67,40 @@ mixin PlayerMixin {
     // 直播 FLV 断流恢复会重新取流，回退缓存没有实际收益；避免额外驻留。
     await pp.setProperty('demuxer-max-back-bytes', '0');
     await pp.setProperty('demuxer-seekable-cache', 'no');
-    // 秒数作为直播缓冲主约束，demuxer-max-bytes 仍提供大小上限。
-    await pp.setProperty('cache-secs', '3');
-    await pp.setProperty('network-timeout', '15');
+    // 秒数作为直播缓冲主约束，跟随缓冲区设置推导；open 前会按
+    // 当前线路的实际流类型（FLV/HLS）再校正。demuxer-max-bytes 仍提供大小上限。
+    await pp.setProperty(
+      'cache-secs',
+      demuxerCacheSecs(
+        AppSettingsController.instance.playerBufferSize.value,
+      ).toString(),
+    );
+    // 网络卡死时快速失败，交给上层切线路，而不是无限等待；
+    // demuxer 缓冲已兜住秒级抖动，10 秒读不到数据即可判死
+    await pp.setProperty('network-timeout', '10');
     await pp.setProperty(
       'stream-lavf-opts',
       // reconnect_max_retries 设界：死链（如斗鱼 token 过期）不应被
       // mpv 无限静默重连，要快速把错误抛给上层重新取流
       'reconnect_streamed=1,reconnect_at_eof=1,reconnect_delay_max=2,reconnect_max_retries=3',
     );
+  }
+
+  /// open 前按目标线路的实际流类型应用 cache-secs，
+  /// 属性随下一次 demuxer 建立生效；失败仅记录，不阻断播放
+  Future<void> applyDemuxerCacheSecsFor(String url) async {
+    try {
+      final pp = player.platform as NativePlayer;
+      await pp.setProperty(
+        'cache-secs',
+        demuxerCacheSecs(
+          AppSettingsController.instance.playerBufferSize.value,
+          isHls: url.toLowerCase().contains('.m3u8'),
+        ).toString(),
+      );
+    } catch (e) {
+      Log.logPrint(e);
+    }
   }
 
   /// 视频控制器

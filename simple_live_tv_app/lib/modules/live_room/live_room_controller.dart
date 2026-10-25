@@ -427,6 +427,8 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
       if (currentLineIndex < 0 || currentLineIndex >= playUrls.length) {
         currentLineIndex = 0;
       }
+      // 按当前线路的实际流类型校正 cache-secs（FLV/HLS 预读不同）
+      await applyDemuxerCacheSecsFor(playUrls[currentLineIndex]);
       _openIssuedAt = DateTime.now();
       player.open(
         Media(
