@@ -6,6 +6,8 @@ import 'package:simple_live_core/src/common/danmaku_decode_worker.dart';
 import 'package:simple_live_core/src/common/web_socket_util.dart';
 import 'package:tars_dart/tars/codec/tars_output_stream.dart';
 
+import 'danmaku_connection.dart';
+
 class HuyaDanmakuArgs {
   final int ayyuid;
   final int topSid;
@@ -25,7 +27,7 @@ class HuyaDanmakuArgs {
   }
 }
 
-class HuyaDanmaku implements LiveDanmaku {
+class HuyaDanmaku with DanmakuConnection implements LiveDanmaku {
   @override
   int heartbeatTime = 60 * 1000;
 
@@ -36,8 +38,6 @@ class HuyaDanmaku implements LiveDanmaku {
   @override
   Function()? onReady;
   String serverUrl = "wss://cdnws.api.huya.com";
-
-  WebScoketUtils? webScoketUtils;
 
   final heartbeatData = base64.decode("ABQdAAwsNgBM");
 
@@ -54,7 +54,7 @@ class HuyaDanmaku implements LiveDanmaku {
     }
     if (startGeneration != _startGeneration) return;
     danmakuArgs = args as HuyaDanmakuArgs;
-    webScoketUtils = WebScoketUtils(
+    replaceConnection(WebScoketUtils(
       url: serverUrl,
       heartBeatTime: heartbeatTime,
       onMessage: (e) {
@@ -73,8 +73,7 @@ class HuyaDanmaku implements LiveDanmaku {
       onClose: (e) {
         onClose?.call("服务器连接失败$e");
       },
-    );
-    webScoketUtils?.connect();
+    ));
   }
 
   void joinRoom() {
@@ -115,7 +114,7 @@ class HuyaDanmaku implements LiveDanmaku {
     _startGeneration++;
     onMessage = null;
     onClose = null;
-    webScoketUtils?.close();
+    closeConnection();
     _decoderWorker?.dispose();
     _decoderWorker = null;
   }

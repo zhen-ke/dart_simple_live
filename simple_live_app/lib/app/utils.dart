@@ -46,12 +46,14 @@ class Utils {
   /// - `title` 弹窗标题
   /// - `confirm` 确认按钮内容，留空为确定
   /// - `cancel` 取消按钮内容，留空为取消
+  /// - `barrierDismissible` 点击遮罩是否关闭；需要用户明确选择时传 false
   static Future<bool> showAlertDialog(
     String content, {
     String title = '',
     String confirm = '',
     String cancel = '',
     bool selectable = false,
+    bool barrierDismissible = true,
     List<Widget>? actions,
   }) async {
     var result = await Get.dialog(
@@ -80,6 +82,7 @@ class Utils {
           ),
         ],
       ),
+      barrierDismissible: barrierDismissible,
     );
     return result ?? false;
   }

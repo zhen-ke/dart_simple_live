@@ -7,8 +7,9 @@ import 'package:simple_live_core/src/common/danmaku_decode_worker.dart';
 import 'package:simple_live_core/src/common/web_socket_util.dart';
 
 import '../common/binary_writer.dart';
+import 'danmaku_connection.dart';
 
-class DouyuDanmaku implements LiveDanmaku {
+class DouyuDanmaku with DanmakuConnection implements LiveDanmaku {
   @override
   int heartbeatTime = 45 * 1000;
 
@@ -20,7 +21,6 @@ class DouyuDanmaku implements LiveDanmaku {
   Function()? onReady;
   String serverUrl = "wss://danmuproxy.douyu.com:8506";
 
-  WebScoketUtils? webScoketUtils;
   int _startGeneration = 0;
   DanmakuDecodeWorker? _decoderWorker;
 
@@ -32,7 +32,7 @@ class DouyuDanmaku implements LiveDanmaku {
       args = await args;
     }
     if (startGeneration != _startGeneration) return;
-    webScoketUtils = WebScoketUtils(
+    replaceConnection(WebScoketUtils(
       url: serverUrl,
       heartBeatTime: heartbeatTime,
       onMessage: (e) {
@@ -51,8 +51,7 @@ class DouyuDanmaku implements LiveDanmaku {
       onClose: (e) {
         onClose?.call("服务器连接失败$e");
       },
-    );
-    webScoketUtils?.connect();
+    ));
   }
 
   void joinRoom(roomId) {
@@ -73,7 +72,7 @@ class DouyuDanmaku implements LiveDanmaku {
     _startGeneration++;
     onMessage = null;
     onClose = null;
-    webScoketUtils?.close();
+    closeConnection();
     _decoderWorker?.dispose();
     _decoderWorker = null;
   }

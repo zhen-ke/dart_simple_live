@@ -457,13 +457,40 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     }
     // 播放已不再稳定：挂起的预算重置作废
     _stablePlayTimer?.cancel();
-    _recoveryTask ??= _runRecovery(reason, error: error)
-        .whenComplete(() => _recoveryTask = null);
+    _recoveryTask ??= _startRecoveryTask(reason, error: error);
+  }
+
+  /// 恢复任务的唯一出口：无论内部提前 return、抛错还是走完终态，
+  /// 状态都在 finally 归零，不可能把 _recovering 留在 true
+  Future<void> _startRecoveryTask(String reason, {String? error}) async {
+    try {
+      await _runRecovery(reason, error: error);
+    } finally {
+      _recoveryTask = null;
+      _recovering = false;
+      _recoveryDeadline = null;
+    }
   }
 
   /// 单轮恢复：先在当前流上退避重试；预算耗尽后进入
-  /// 换线路 / 状态核实 / 刷新流信息的兜底流程
+  /// 换线路 / 状态核实 / 刷新流信息的兜底流程。
+  ///
+  /// 这里捕获异常只为给用户明确反馈；状态复位由 [_startRecoveryTask]
+  /// 的 finally 统一保证，恢复链路抛错不会留下"恢复中"的僵死状态。
   Future<void> _runRecovery(String reason, {String? error}) async {
+    try {
+      await _runRecoverySteps(reason, error: error);
+    } catch (e, s) {
+      Log.logPrint('断流恢复异常: $e\n$s');
+      _endRecovery(succeeded: false);
+      if (_sessionAlive(_sessionGen)) {
+        errorMsg.value = "播放失败";
+        SmartDialog.showToast("播放失败，请刷新重试");
+      }
+    }
+  }
+
+  Future<void> _runRecoverySteps(String reason, {String? error}) async {
     final gen = _sessionGen;
     if (mediaErrorRetryCount < 2) {
       // 决策时即刻消耗重试预算，避免并发事件重复排队

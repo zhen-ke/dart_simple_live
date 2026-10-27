@@ -141,5 +141,61 @@ void main() {
       expect(messages.single['userName'], 'bob');
       expect(messages.single['message'], 'hello huya');
     });
+
+    test('decodes inline instead of hanging while the isolate is down',
+        () async {
+      await worker.decodeDouyu(
+        buildDouyuFrame('type@=chatmsg/nn@=alice/txt@=hi/dms@=1/'),
+      );
+
+      worker.debugKillIsolate();
+      // 等退出事件落地：修复前从这里开始的所有请求都会永久悬挂
+      await _waitUntil(() => !worker.debugIsWorkerRunning);
+      expect(worker.debugIsWorkerRunning, isFalse);
+
+      final decoded = await worker
+          .decodeDouyu(
+            buildDouyuFrame('type@=chatmsg/nn@=alice/txt@=still-alive/dms@=1/'),
+          )
+          .timeout(const Duration(seconds: 3));
+      final messages = decoded['messages'] as List;
+
+      expect(decoded['error'], isNull);
+      expect(messages, hasLength(1));
+      expect(messages.single['message'], 'still-alive');
+      // 仍在退避窗口内：这一帧是内联解码，没有重新拉起 Isolate
+      expect(worker.debugIsWorkerRunning, isFalse);
+    });
+
+    test('respawns the isolate after the crash backoff', () async {
+      await worker.decodeDouyu(
+        buildDouyuFrame('type@=chatmsg/nn@=alice/txt@=before/dms@=1/'),
+      );
+      expect(worker.debugIsWorkerRunning, isTrue);
+
+      worker.debugKillIsolate();
+      await _waitUntil(() => !worker.debugIsWorkerRunning);
+      // 越过 500ms 退避窗口
+      await Future<void>.delayed(const Duration(milliseconds: 800));
+
+      final decoded = await worker.decodeDouyu(
+        buildDouyuFrame('type@=chatmsg/nn@=bob/txt@=after/dms@=1/'),
+      );
+      final messages = decoded['messages'] as List;
+
+      expect(decoded['error'], isNull);
+      expect(messages, hasLength(1));
+      expect(messages.single['userName'], 'bob');
+      expect(messages.single['message'], 'after');
+      expect(worker.debugIsWorkerRunning, isTrue);
+    });
   });
+}
+
+/// 轮询等待条件成立（最多 2 秒），避免依赖固定 sleep 的时序
+Future<void> _waitUntil(bool Function() condition) async {
+  final deadline = DateTime.now().add(const Duration(seconds: 2));
+  while (!condition() && DateTime.now().isBefore(deadline)) {
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+  }
 }

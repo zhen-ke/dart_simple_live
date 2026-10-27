@@ -36,6 +36,9 @@ class RemoteSyncRoomController extends BaseController {
   RxList<RoomUser> roomUsers = <RoomUser>[].obs;
 
   Timer? _timer;
+
+  /// 页面是否已关闭：异步回调（连接失败等）不能对着已销毁的页面操作路由
+  bool _closed = false;
   var countDown = 600.obs;
 
   @override
@@ -46,7 +49,16 @@ class RemoteSyncRoomController extends BaseController {
 
   void connect() async {
     listenSignalR();
-    await signalR.connect();
+    try {
+      await signalR.connect();
+    } catch (e) {
+      // 连不上就明确退出，别让页面停在"连接中"且没有任何提示
+      Log.logPrint(e);
+      if (_closed) return;
+      SmartDialog.showToast("连接同步服务器失败");
+      Get.back();
+      return;
+    }
     if (signalR.state == SignalRConnectionState.connected) {
       if (roomId.isEmpty) {
         createRoom();
@@ -357,6 +369,7 @@ class RemoteSyncRoomController extends BaseController {
 
   @override
   void onClose() {
+    _closed = true;
     _timer?.cancel();
     _roomDestroyedSubscription?.cancel();
     _roomUserUpdatedSubscription?.cancel();

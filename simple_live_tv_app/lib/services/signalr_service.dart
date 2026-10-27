@@ -49,20 +49,47 @@ class SignalRService {
       _onRoomUserUpdatedStreamController.stream;
 
   HubConnection? hubConnection;
+  bool _disposed = false;
+
+  /// 广播连接状态。页面 dispose 后迟到的回调（重连成功、连接失败）
+  /// 直接丢弃，避免对已关闭的 StreamController add 抛 StateError
+  void _emitState(SignalRConnectionState next) {
+    state = next;
+    if (!_stateStreamController.isClosed) {
+      _stateStreamController.add(next);
+    }
+  }
+
   Future<void> connect() async {
-    hubConnection = HubConnectionBuilder().withUrl(kUrl).build();
+    if (_disposed) return;
+    // 重复 connect 时先停掉旧连接，避免遗留连接继续占用回调与 socket
+    try {
+      await hubConnection?.stop();
+    } catch (_) {
+      // 旧连接可能已经断开，停止失败不影响新建
+    }
+    hubConnection = HubConnectionBuilder()
+        .withUrl(kUrl)
+        // 断网/服务端重启后自动重连；null 表示该次重试失败后放弃
+        .withAutomaticReconnect(
+          retryDelays: [2000, 5000, 10000, 20000, null],
+        )
+        .build();
     hubConnection!.onclose(({Exception? error}) {
-      state = SignalRConnectionState.disconnected;
-      _stateStreamController.add(state);
+      _emitState(SignalRConnectionState.disconnected);
     });
     hubConnection!.onreconnected(({String? connectionId}) {
       Log.d("reconnected: $connectionId");
-      state = SignalRConnectionState.connected;
-      _stateStreamController.add(state);
+      _emitState(SignalRConnectionState.connected);
     });
-    await hubConnection!.start();
-    state = SignalRConnectionState.connected;
-    _stateStreamController.add(state);
+    try {
+      await hubConnection!.start();
+    } catch (e) {
+      // 连接失败必须落到明确状态：否则界面永远停在"连接中"
+      _emitState(SignalRConnectionState.disconnected);
+      rethrow;
+    }
+    _emitState(SignalRConnectionState.connected);
     _listen();
   }
 
@@ -90,8 +117,7 @@ class SignalRService {
 
   Future<void> disconnect() async {
     await hubConnection?.stop();
-    state = SignalRConnectionState.disconnected;
-    _stateStreamController.add(state);
+    _emitState(SignalRConnectionState.disconnected);
   }
 
   Future<Resp<String>> createRoom() async {
@@ -133,6 +159,7 @@ class SignalRService {
   }
 
   void dispose() {
+    _disposed = true;
     _stateStreamController.close();
     _onFavoriteStreamController.close();
     _onHistoryStreamController.close();

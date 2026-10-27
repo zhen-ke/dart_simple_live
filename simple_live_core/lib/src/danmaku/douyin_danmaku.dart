@@ -7,6 +7,7 @@ import 'package:simple_live_core/src/common/danmaku_decode_worker.dart';
 import 'package:simple_live_core/src/common/web_socket_util.dart';
 import 'package:simple_live_core/src/scripts/douyin_sign.dart';
 
+import 'danmaku_connection.dart';
 import 'proto/douyin.pb.dart';
 
 class DouyinDanmakuArgs {
@@ -31,7 +32,7 @@ class DouyinDanmakuArgs {
   }
 }
 
-class DouyinDanmaku implements LiveDanmaku {
+class DouyinDanmaku with DanmakuConnection implements LiveDanmaku {
   @override
   int heartbeatTime = 10 * 1000;
 
@@ -43,7 +44,6 @@ class DouyinDanmaku implements LiveDanmaku {
   Function()? onReady;
   String serverUrl = "wss://webcast3-ws-web-lq.douyin.com/webcast/im/push/v2/";
   late DouyinDanmakuArgs danmakuArgs;
-  WebScoketUtils? webScoketUtils;
   int _startGeneration = 0;
   DanmakuDecodeWorker? _decoderWorker;
 
@@ -103,7 +103,7 @@ class DouyinDanmaku implements LiveDanmaku {
 
     var url = "$uri&signature=$sign";
     var backupUrl = url.replaceAll("webcast3-ws-web-lq", "webcast5-ws-web-lf");
-    webScoketUtils = WebScoketUtils(
+    replaceConnection(WebScoketUtils(
       url: url,
       backupUrl: backupUrl,
       headers: {
@@ -128,8 +128,7 @@ class DouyinDanmaku implements LiveDanmaku {
       onClose: (e) {
         onClose?.call("服务器连接失败$e");
       },
-    );
-    webScoketUtils?.connect();
+    ));
   }
 
   @override
@@ -246,7 +245,7 @@ class DouyinDanmaku implements LiveDanmaku {
     _startGeneration++;
     onMessage = null;
     onClose = null;
-    webScoketUtils?.close();
+    closeConnection();
     _decoderWorker?.dispose();
     _decoderWorker = null;
   }

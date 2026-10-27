@@ -15,7 +15,8 @@ class CustomLogInterceptor extends Interceptor {
   void onError(DioException err, ErrorInterceptorHandler handler) {
     var time =
         DateTime.now().millisecondsSinceEpoch - err.requestOptions.extra["ts"];
-    if (!kReleaseMode) {
+    // 只有 debug 才打印完整请求体/响应体：profile 构建同样不应付这份开销
+    if (kDebugMode) {
       Log.e('''【HTTP请求错误-${err.type}】 耗时:${time}ms
 ${err.message}
 
@@ -24,7 +25,7 @@ Response Code：${err.response?.statusCode}
 Request URL：${err.requestOptions.uri}
 Request Query：${err.requestOptions.queryParameters}
 Request Data：${err.requestOptions.data}
-Request Headers：${err.requestOptions.headers}
+Request Headers：${_maskHeader(err.requestOptions.headers)}
 Response Headers：${err.response?.headers.map}
 Response Data：${err.response?.data}''', err.stackTrace);
     } else {
@@ -48,7 +49,7 @@ Response Data：${err.response?.data}''', err.stackTrace);
   void onResponse(Response response, ResponseInterceptorHandler handler) {
     var time = DateTime.now().millisecondsSinceEpoch -
         response.requestOptions.extra["ts"];
-    if (!kReleaseMode) {
+    if (kDebugMode) {
       Log.i(
         '''【HTTP请求响应】 耗时:${time}ms
 Request Method：${response.requestOptions.method}
@@ -56,7 +57,7 @@ Request Code：${response.statusCode}
 Request URL：${response.requestOptions.uri}
 Request Query：${response.requestOptions.queryParameters}
 Request Data：${response.requestOptions.data}
-Request Headers：${response.requestOptions.headers}
+Request Headers：${_maskHeader(response.requestOptions.headers)}
 Response Headers：${response.headers.map}
 Response Data：${response.data}''',
       );

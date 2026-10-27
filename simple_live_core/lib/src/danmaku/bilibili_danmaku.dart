@@ -7,6 +7,7 @@ import 'package:simple_live_core/src/common/danmaku_decode_worker.dart';
 import 'package:simple_live_core/src/common/web_socket_util.dart';
 
 import '../common/binary_writer.dart';
+import 'danmaku_connection.dart';
 
 class BiliBiliDanmakuArgs {
   final int roomId;
@@ -36,7 +37,7 @@ class BiliBiliDanmakuArgs {
   }
 }
 
-class BiliBiliDanmaku implements LiveDanmaku {
+class BiliBiliDanmaku with DanmakuConnection implements LiveDanmaku {
   @override
   int heartbeatTime = 60 * 1000;
 
@@ -49,7 +50,6 @@ class BiliBiliDanmaku implements LiveDanmaku {
 
   //String serverUrl = "wss://broadcastlv.chat.bilibili.com/sub";
 
-  WebScoketUtils? webScoketUtils;
   late BiliBiliDanmakuArgs danmakuArgs;
   int _startGeneration = 0;
   DanmakuDecodeWorker? _decoderWorker;
@@ -63,7 +63,7 @@ class BiliBiliDanmaku implements LiveDanmaku {
     }
     if (startGeneration != _startGeneration) return;
     danmakuArgs = args as BiliBiliDanmakuArgs;
-    webScoketUtils = WebScoketUtils(
+    replaceConnection(WebScoketUtils(
       url: "wss://${args.serverHost}/sub",
       heartBeatTime: heartbeatTime,
       headers: args.cookie.isEmpty
@@ -87,8 +87,7 @@ class BiliBiliDanmaku implements LiveDanmaku {
       onClose: (e) {
         onClose?.call("服务器连接失败$e");
       },
-    );
-    webScoketUtils?.connect();
+    ));
   }
 
   void joinRoom(BiliBiliDanmakuArgs args) {
@@ -120,7 +119,7 @@ class BiliBiliDanmaku implements LiveDanmaku {
     _startGeneration++;
     onMessage = null;
     onClose = null;
-    webScoketUtils?.close();
+    closeConnection();
     _decoderWorker?.dispose();
     _decoderWorker = null;
   }

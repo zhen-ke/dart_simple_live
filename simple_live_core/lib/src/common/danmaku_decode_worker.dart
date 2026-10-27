@@ -11,19 +11,43 @@ import 'package:simple_live_core/src/model/tars/huya_danmaku.dart';
 import 'package:tars_dart/tars/codec/tars_input_stream.dart' hide BinaryReader;
 
 import 'binary_writer.dart';
+import 'core_log.dart';
 
 /// Long-lived decoder isolate for the hot Bilibili/Douyin/Huya/Douyu frame
 /// paths. Keeping one worker per room avoids paying Isolate.run's spawn cost
 /// for every frame while preserving frame order.
+///
+/// 定位：Isolate 只是"加速器"，不是"唯一通路"。
+/// - 监听退出/错误端口，退出时失败全部在途请求并复位状态；
+/// - 崩溃后按指数退避重新拉起，退避窗口内改在调用方 isolate 内联解码，
+///   保证弹幕永远不会因为解码器崩溃而停摆（只是短暂占用 UI 线程）。
 class DanmakuDecodeWorker {
   ReceivePort? _receivePort;
+  ReceivePort? _exitPort;
+  ReceivePort? _errorPort;
   Isolate? _isolate;
   SendPort? _sendPort;
   Future<void>? _startTask;
   Completer<SendPort>? _readyCompleter;
   int _nextRequestId = 0;
   bool _disposed = false;
+
+  /// 解码 Isolate 代次：每次启动/复位递增，用于丢弃旧 Isolate 的迟到回调
+  int _workerGen = 0;
+
+  /// 连续失败次数：决定重新拉起的退避时长
+  int _failureStreak = 0;
+
+  /// 退避窗口结束时间：在此之前不再尝试拉起，直接内联解码
+  DateTime? _nextStartAt;
+
+  /// 退出日志节流：Isolate 反复退出时不至于刷爆日志
+  DateTime? _lastExitLogAt;
+
   final Map<int, Completer<Map<String, dynamic>>> _pending = {};
+
+  /// 解码 Isolate 当前是否在跑（仅测试用）
+  bool get debugIsWorkerRunning => _sendPort != null;
 
   Future<Map<String, dynamic>> decodeBilibili(List<int> data) =>
       _decode('bilibili', data);
@@ -39,14 +63,53 @@ class DanmakuDecodeWorker {
 
   Future<Map<String, dynamic>> _decode(String platform, List<int> data) async {
     if (_disposed) throw StateError('Danmaku decoder is disposed');
-    await _ensureStarted();
+    final sendPort = await _acquireSendPort();
     if (_disposed) throw StateError('Danmaku decoder is disposed');
+    if (sendPort == null) {
+      // 解码 Isolate 不可用：退化为当前 isolate 内联解码。
+      // 弹幕是实时数据，宁可短暂占用 UI 线程也不能整条链路停摆。
+      return _decodeInline(platform, data);
+    }
 
     final requestId = ++_nextRequestId;
     final completer = Completer<Map<String, dynamic>>();
     _pending[requestId] = completer;
-    _sendPort!.send(<Object?>[requestId, platform, data]);
+    sendPort.send(<Object?>[requestId, platform, data]);
     return completer.future;
+  }
+
+  /// 取可用的解码端口；退避窗口内或拉起失败时返回 null（调用方走内联）
+  Future<SendPort?> _acquireSendPort() async {
+    final current = _sendPort;
+    if (current != null) return current;
+    final nextStartAt = _nextStartAt;
+    if (nextStartAt != null && DateTime.now().isBefore(nextStartAt)) {
+      return null;
+    }
+    try {
+      await _ensureStarted();
+    } catch (e) {
+      _noteWorkerFailure();
+      _logExit('Danmaku decoder isolate unavailable: $e');
+      return null;
+    }
+    return _sendPort;
+  }
+
+  /// 在当前 isolate 内完成解码，返回与 Isolate 通路一致的结构
+  Map<String, dynamic> _decodeInline(String platform, List<int> data) {
+    return switch (platform) {
+      'bilibili' => decodeBilibiliFrame(data),
+      'douyin' => decodeDouyinFrame(data),
+      'huya' => decodeHuyaFrame(data),
+      'douyu' => decodeDouyuFrame(data),
+      _ => <String, dynamic>{
+          'messages': const <Object?>[],
+          'messageCount': 0,
+          'elapsedUs': 0,
+          'error': 'Unknown decoder: $platform',
+        },
+    };
   }
 
   Future<void> _ensureStarted() {
@@ -63,8 +126,13 @@ class DanmakuDecodeWorker {
   }
 
   Future<void> _start() async {
+    final gen = ++_workerGen;
     final receivePort = ReceivePort();
+    final exitPort = ReceivePort();
+    final errorPort = ReceivePort();
     _receivePort = receivePort;
+    _exitPort = exitPort;
+    _errorPort = errorPort;
     final ready = Completer<SendPort>();
     _readyCompleter = ready;
     receivePort.listen((dynamic message) {
@@ -76,6 +144,9 @@ class DanmakuDecodeWorker {
       final requestId = message[0] as int;
       final completer = _pending.remove(requestId);
       if (completer == null || completer.isCompleted) return;
+      // 收到回包说明 Isolate 活着：清空失败计数与退避窗口
+      _failureStreak = 0;
+      _nextStartAt = null;
       final result = message[1];
       if (result is Map) {
         completer.complete(Map<String, dynamic>.from(result));
@@ -86,46 +157,126 @@ class DanmakuDecodeWorker {
       }
     });
 
+    // Isolate 正常退出/被杀/未捕获异常终止都会走到这里
+    exitPort.listen((dynamic _) {
+      _handleWorkerExit(gen, 'Danmaku decoder isolate exited');
+    });
+    errorPort.listen((dynamic message) {
+      if (gen != _workerGen) return;
+      final detail =
+          message is List && message.isNotEmpty ? message.first : message;
+      _logExit('Danmaku decoder isolate error: $detail');
+    });
+
     try {
       final isolate = await Isolate.spawn(
         _danmakuDecoderMain,
         receivePort.sendPort,
+        onExit: exitPort.sendPort,
+        onError: errorPort.sendPort,
       );
       if (_disposed) {
         isolate.kill(priority: Isolate.immediate);
         throw StateError('Danmaku decoder is disposed');
       }
+      // spawn 期间 Isolate 已退出并复位：本次启动作废，交给下一帧重试
+      if (gen != _workerGen) {
+        isolate.kill(priority: Isolate.immediate);
+        throw StateError('Danmaku decoder isolate exited during startup');
+      }
       _isolate = isolate;
       _sendPort = await ready.future;
-      _readyCompleter = null;
+      if (identical(_readyCompleter, ready)) _readyCompleter = null;
       if (_disposed) throw StateError('Danmaku decoder is disposed');
     } catch (_) {
-      _readyCompleter = null;
-      receivePort.close();
-      if (identical(_receivePort, receivePort)) _receivePort = null;
+      if (identical(_readyCompleter, ready)) _readyCompleter = null;
+      if (identical(_receivePort, receivePort)) {
+        receivePort.close();
+        _receivePort = null;
+      }
+      if (identical(_exitPort, exitPort)) {
+        exitPort.close();
+        _exitPort = null;
+      }
+      if (identical(_errorPort, errorPort)) {
+        errorPort.close();
+        _errorPort = null;
+      }
       rethrow;
     }
+  }
+
+  /// Isolate 退出：失败全部在途请求、安排退避，下一次 decode 在退避
+  /// 窗口结束后重新 spawn，窗口内由调用方内联解码兜底
+  void _handleWorkerExit(int gen, String reason) {
+    // 已被更新的 Isolate 取代，或已 dispose：只做清理，不再报错
+    if (gen != _workerGen) return;
+    if (_disposed) return;
+    _noteWorkerFailure();
+    _logExit(reason);
+    _resetWorker(StateError(reason));
+  }
+
+  /// 记一次失败并按指数退避（0.5s → 1s → 2s → 4s → 8s）安排下次拉起
+  void _noteWorkerFailure() {
+    _failureStreak = _failureStreak >= 5 ? 5 : _failureStreak + 1;
+    final backoffMs = 500 * (1 << (_failureStreak - 1));
+    _nextStartAt = DateTime.now().add(Duration(milliseconds: backoffMs));
+  }
+
+  /// 复位解码器状态。调用后 _sendPort/_isolate 为空，pending 全部失败，
+  /// 下一次 [_ensureStarted] 会重新拉起 Isolate。
+  void _resetWorker(Object error) {
+    // 递增代次，使旧 Isolate 的迟到消息/退出回调全部失效
+    _workerGen++;
+    final ready = _readyCompleter;
+    _readyCompleter = null;
+    if (ready != null && !ready.isCompleted) {
+      ready.completeError(error);
+      // 启动流程可能已提前退出、没人 await 这个 Completer：
+      // 挂一个空的错误处理，避免变成未捕获的异步异常
+      unawaited(
+        ready.future.then<void>((_) {}, onError: (Object _, StackTrace __) {}),
+      );
+    }
+    _isolate = null;
+    _sendPort = null;
+    _startTask = null;
+    _receivePort?.close();
+    _receivePort = null;
+    _exitPort?.close();
+    _exitPort = null;
+    _errorPort?.close();
+    _errorPort = null;
+
+    for (final completer in _pending.values) {
+      if (!completer.isCompleted) {
+        completer.completeError(error);
+      }
+    }
+    _pending.clear();
+  }
+
+  void _logExit(String message) {
+    final now = DateTime.now();
+    final last = _lastExitLogAt;
+    if (last != null && now.difference(last) < const Duration(seconds: 5)) {
+      return;
+    }
+    _lastExitLogAt = now;
+    CoreLog.error(message);
   }
 
   void dispose() {
     if (_disposed) return;
     _disposed = true;
-    final ready = _readyCompleter;
-    _readyCompleter = null;
-    if (ready != null && !ready.isCompleted) {
-      ready.completeError(StateError('Danmaku decoder is disposed'));
-    }
     _isolate?.kill(priority: Isolate.immediate);
-    _isolate = null;
-    _sendPort = null;
-    _receivePort?.close();
-    _receivePort = null;
-    for (final completer in _pending.values) {
-      if (!completer.isCompleted) {
-        completer.completeError(StateError('Danmaku decoder is disposed'));
-      }
-    }
-    _pending.clear();
+    _resetWorker(StateError('Danmaku decoder is disposed'));
+  }
+
+  /// 仅测试用：强杀解码 Isolate，模拟被系统回收
+  void debugKillIsolate() {
+    _isolate?.kill(priority: Isolate.immediate);
   }
 }
 

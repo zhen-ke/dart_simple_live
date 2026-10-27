@@ -42,7 +42,14 @@ class SyncController extends BaseController {
 
   void connect() async {
     listenSignalR();
-    await signalR.connect();
+    try {
+      await signalR.connect();
+    } catch (e) {
+      // 连不上就明确提示，别让页面停在"连接中"且没有任何反馈
+      Log.logPrint(e);
+      SmartDialog.showToast("连接同步服务器失败");
+      return;
+    }
     if (signalR.state == SignalRConnectionState.connected) {
       createRoom();
     }

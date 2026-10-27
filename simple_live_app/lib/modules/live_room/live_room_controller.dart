@@ -157,6 +157,9 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
 
   Timer? autoExitTimer;
 
+  /// 倒计时归零后的 10 秒兜底退出 Timer（弹窗无响应时生效）
+  Timer? _autoExitFallbackTimer;
+
   /// 设置的自动关闭时间（分钟）
   var autoExitMinutes = 60.obs;
 
@@ -358,32 +361,78 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
   void setAutoExit() {
     if (!autoExitEnable.value) {
       autoExitTimer?.cancel();
+      autoExitTimer = null;
+      _autoExitFallbackTimer?.cancel();
+      _autoExitFallbackTimer = null;
       return;
     }
     autoExitTimer?.cancel();
     countdown.value = autoExitMinutes.value * 60;
-    autoExitTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
+    autoExitTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       countdown.value -= 1;
-      if (countdown.value <= 0) {
-        timer = Timer(const Duration(seconds: 10), () async {
-          await WakelockPlus.disable();
-          exit(0);
-        });
-        autoExitTimer?.cancel();
-        var delay = await Utils.showAlertDialog("定时关闭已到时,是否延迟关闭?",
-            title: "延迟关闭", confirm: "延迟", cancel: "关闭", selectable: true);
-        if (delay) {
-          timer.cancel();
-          delayAutoExit.value = true;
-          showAutoExitSheet();
-          setAutoExit();
-        } else {
-          delayAutoExit.value = false;
-          await WakelockPlus.disable();
-          exit(0);
-        }
-      }
+      if (countdown.value > 0) return;
+      timer.cancel();
+      autoExitTimer?.cancel();
+      autoExitTimer = null;
+      _onAutoExitCountdownEnd();
     });
+  }
+
+  /// 倒计时归零：先弹窗询问是否延迟，10 秒无响应则退出。
+  /// 兜底 Timer 必须受控（onClose/选择延迟时取消），否则用户关掉
+  /// 弹窗或退出直播间后仍会被无提示杀进程。
+  void _onAutoExitCountdownEnd() {
+    _autoExitFallbackTimer?.cancel();
+    _autoExitFallbackTimer = Timer(const Duration(seconds: 10), () {
+      _autoExitFallbackTimer = null;
+      if (_roomClosed) return;
+      unawaited(_quitApp());
+    });
+    unawaited(_askDelayAutoExit());
+  }
+
+  Future<void> _askDelayAutoExit() async {
+    var delay = false;
+    try {
+      delay = await Utils.showAlertDialog(
+        "定时关闭已到时，10 秒未响应将自动关闭，是否延迟？",
+        title: "延迟关闭",
+        confirm: "延迟",
+        cancel: "关闭",
+        selectable: true,
+        // 这里的选择直接决定进程去留，不允许点遮罩"误关"
+        barrierDismissible: false,
+      );
+    } catch (e) {
+      // 弹窗失败（如页面已销毁）按"关闭"处理，但不能静默吞掉退出动作
+      Log.logPrint(e);
+    }
+    // 用户已经离开直播间：不再由后台 Timer 决定进程生死
+    if (_roomClosed) return;
+    _autoExitFallbackTimer?.cancel();
+    _autoExitFallbackTimer = null;
+    if (delay) {
+      delayAutoExit.value = true;
+      showAutoExitSheet();
+      setAutoExit();
+    } else {
+      delayAutoExit.value = false;
+      await _quitApp();
+    }
+  }
+
+  Future<void> _quitApp() async {
+    autoExitTimer?.cancel();
+    autoExitTimer = null;
+    _autoExitFallbackTimer?.cancel();
+    _autoExitFallbackTimer = null;
+    try {
+      await WakelockPlus.disable();
+    } catch (e) {
+      // 释放唤醒锁失败不能挡住退出
+      Log.logPrint(e);
+    }
+    exit(0);
   }
   // 弹窗逻辑
 
@@ -713,6 +762,7 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
       await initializePlayer();
       // 初始化期间取流请求可能已被更新的一次取代
       if (!_sessionAlive(gen) || req != _playUrlGen) return;
+      if (!_hasCurrentLine) return;
 
       // 按当前线路的实际流类型校正 cache-secs（FLV/HLS 预读不同）
       await applyDemuxerCacheSecsFor(playUrls[currentLineIndex]);
@@ -725,12 +775,18 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     }
   }
 
+  /// 当前线路是否可用（playUrls 可能因取流失败为空）
+  bool get _hasCurrentLine =>
+      currentLineIndex >= 0 && currentLineIndex < playUrls.length;
+
   /// 重连当前线路：强制重新打开完整线路列表并跳回当前线路
   /// - 相比 player.jump，player.open 能确保 demuxer 重新拉流
   /// - 保留完整线路列表，使后续 changePlayLine 的 jump 仍可用
-  Future<void> retryCurrentLine() async {
+  /// - 返回是否真的发起了重连：无可用线路时交给上层走兜底
+  Future<bool> retryCurrentLine() async {
     final gen = _sessionGen;
-    if (!_sessionAlive(gen)) return;
+    if (!_sessionAlive(gen)) return false;
+    if (!_hasCurrentLine) return false;
     currentLineInfo.value = "线路${currentLineIndex + 1}";
     errorMsg.value = "";
 
@@ -738,14 +794,16 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     await applyDemuxerCacheSecsFor(playUrls[currentLineIndex]);
     _openIssuedAt = DateTime.now();
     await player.open(Playlist(_buildMediaList()));
-    if (!_sessionAlive(gen)) return;
+    if (!_sessionAlive(gen)) return true;
     if (currentLineIndex > 0) {
       await player.jump(currentLineIndex);
     }
+    return true;
   }
 
   void setPlayer() async {
     if (!_sessionAlive(_sessionGen)) return;
+    if (!_hasCurrentLine) return;
     currentLineInfo.value = "线路${currentLineIndex + 1}";
     errorMsg.value = "";
 
@@ -765,13 +823,40 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     }
     // 播放已不再稳定：挂起的预算重置作废
     _stablePlayTimer?.cancel();
-    _recoveryTask ??= _runRecovery(reason, error: error)
-        .whenComplete(() => _recoveryTask = null);
+    _recoveryTask ??= _startRecoveryTask(reason, error: error);
+  }
+
+  /// 恢复任务的唯一出口：无论内部提前 return、抛错还是走完终态，
+  /// 状态都在 finally 归零，不可能把 _recovering 留在 true
+  Future<void> _startRecoveryTask(String reason, {String? error}) async {
+    try {
+      await _runRecovery(reason, error: error);
+    } finally {
+      _recoveryTask = null;
+      _recovering = false;
+      _recoveryDeadline = null;
+    }
   }
 
   /// 单轮恢复：先在当前流上退避重试；预算耗尽后进入
-  /// 换线路 / 状态核实 / 刷新流信息的兜底流程
+  /// 换线路 / 状态核实 / 刷新流信息的兜底流程。
+  ///
+  /// 这里捕获异常只为给用户明确反馈；状态复位由 [_startRecoveryTask]
+  /// 的 finally 统一保证，恢复链路抛错不会留下"恢复中"的僵死状态。
   Future<void> _runRecovery(String reason, {String? error}) async {
+    try {
+      await _runRecoverySteps(reason, error: error);
+    } catch (e, s) {
+      Log.logPrint('断流恢复异常: $e\n$s');
+      _endRecovery(succeeded: false);
+      if (_sessionAlive(_sessionGen)) {
+        errorMsg.value = "播放失败";
+        SmartDialog.showToast("播放失败，请刷新重试");
+      }
+    }
+  }
+
+  Future<void> _runRecoverySteps(String reason, {String? error}) async {
     final gen = _sessionGen;
     if (mediaErrorRetryCount < 2) {
       // 决策时即刻消耗重试预算，避免并发事件重复排队
@@ -794,12 +879,14 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
         // 重放旧地址会被服务端掐断。getPlayUrl 内部会重置重试计数，需还原
         final retryCount = mediaErrorRetryCount;
         final ok = await getPlayUrl();
-        if (!ok && playUrls.isNotEmpty && currentLineIndex >= 0) {
-          await retryCurrentLine();
+        if (ok) {
+          mediaErrorRetryCount = retryCount;
+        } else if (!await retryCurrentLine()) {
+          // 重新取流失败且旧线路不可用：本轮恢复没有兜底手段了
+          await _playbackRetriesExhausted(gen: gen, error: error);
         }
-        mediaErrorRetryCount = retryCount;
-      } else {
-        await retryCurrentLine();
+      } else if (!await retryCurrentLine()) {
+        await _playbackRetriesExhausted(gen: gen, error: error);
       }
       return;
     }
@@ -1563,6 +1650,9 @@ ${errorStackTrace ?? (error is Error ? (error as Error).stackTrace : "")}''');
     scrollController.removeListener(scrollListener);
     scrollController.dispose();
     autoExitTimer?.cancel();
+    autoExitTimer = null;
+    _autoExitFallbackTimer?.cancel();
+    _autoExitFallbackTimer = null;
 
     liveDanmaku.stop();
     _clearPendingMessages();

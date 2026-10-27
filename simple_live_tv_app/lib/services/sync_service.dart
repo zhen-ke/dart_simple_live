@@ -36,6 +36,14 @@ class SyncService extends GetxService {
   var httpErrorMsg = "".obs;
 
   var deviceId = "";
+
+  /// 本次服务会话的配对令牌：每次启动 HTTP 服务时轮换。
+  /// 写接口必须携带它，避免同网段任意主机直接覆盖本地数据
+  var _syncToken = "";
+
+  /// 写接口鉴权头
+  static const String syncTokenHeader = "x-sync-token";
+
   @override
   void onInit() {
     Log.d('SyncService init');
@@ -51,10 +59,19 @@ class SyncService extends GetxService {
   void listenUDP() async {
     udp = await UDP.bind(Endpoint.any(port: const Port(udpPort)));
     udp!.asStream().listen((datagram) {
-      var str = String.fromCharCodes(datagram!.data);
+      // socket 关闭时 asStream 可能给出 null，空断言会直接崩
+      if (datagram == null) return;
+      var str = String.fromCharCodes(datagram.data);
       Log.i("Received: $str from ${datagram.address}:${datagram.port}");
       if (str.startsWith('{') && str.endsWith('}')) {
-        var data = json.decode(str);
+        dynamic data;
+        try {
+          data = json.decode(str);
+        } catch (_) {
+          // 同网段任意主机都能往这个端口发广播，非法报文直接忽略
+          return;
+        }
+        if (data is! Map) return;
 
         //处理Hello的广播
         if (data["type"] == "hello") {
@@ -161,6 +178,7 @@ class SyncService extends GetxService {
   Future<void> stopServer() async {
     _serverWanted = false;
     httpRunning.value = false;
+    _syncToken = "";
     var s = server;
     server = null;
     await s?.close(force: true);
@@ -177,14 +195,24 @@ class SyncService extends GetxService {
       serverRouter.post('/sync/blocked_word', _syncBlockedWordReuqest);
       serverRouter.post('/sync/account/bilibili', _syncBiliAccountReuqest);
 
+      // 鉴权挂在路由外层：/sync 下的所有接口（含以后新增的）默认受保护，
+      // 不依赖每个 handler 自己记得校验
+      final handler = const shelf.Pipeline()
+          .addMiddleware(_syncAuthMiddleware())
+          .addHandler(serverRouter.call);
+
+      // 每次启动轮换令牌：只有先通过 /info 握手的客户端才能写入
+      _syncToken = const Uuid().v4().replaceAll('-', '');
+
       var s = await shelf_io.serve(
-        serverRouter,
+        handler,
         InternetAddress.anyIPv4,
         httpPort,
       );
 
       // 等待端口绑定期间用户可能已离开同步页：作废这次启动
       if (!_serverWanted) {
+        _syncToken = "";
         await s.close(force: true);
         return;
       }
@@ -242,7 +270,51 @@ class SyncService extends GetxService {
       'version': Utils.packageInfo.version,
       'address': ipAddress.value,
       'port': httpPort,
+      // 配对令牌：客户端拿到后需在每个写请求里带回
+      'token': _syncToken,
     });
+  }
+
+  /// /sync 写接口的鉴权中间件。
+  /// 放在路由外层而不是各 handler 里：新增同步接口默认受保护。
+  shelf.Middleware _syncAuthMiddleware() {
+    return (shelf.Handler inner) {
+      return (shelf.Request request) {
+        final segments = request.url.pathSegments;
+        if (segments.isEmpty || segments.first != 'sync') {
+          return inner(request);
+        }
+        final denied = _rejectUnauthorized(request);
+        if (denied != null) return denied;
+        return inner(request);
+      };
+    };
+  }
+
+  /// 写接口鉴权：只放行在 /info 握手中拿到本次令牌的客户端。
+  /// 返回 null 表示通过，否则返回应直接回给客户端的错误响应。
+  shelf.Response? _rejectUnauthorized(shelf.Request request) {
+    if (_syncToken.isEmpty) {
+      return _errorResponse('同步服务尚未就绪', status: 503);
+    }
+    if (request.headers[syncTokenHeader] != _syncToken) {
+      return _errorResponse('未授权的同步请求', status: 403);
+    }
+    return null;
+  }
+
+  shelf.Response _errorResponse(String message, {int status = 400}) {
+    return shelf.Response(
+      status,
+      body: json.encode({
+        'status': false,
+        'message': message,
+      }),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      encoding: Encoding.getByName('utf-8'),
+    );
   }
 
   /// 同步关注用户列表
