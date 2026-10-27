@@ -5,6 +5,15 @@ import 'package:hive/hive.dart';
 import 'package:simple_live_shared/app/log.dart';
 
 class LocalStorageService extends GetxService {
+  LocalStorageService({
+    this.settingsBoxName = "LocalStorage",
+    this.shieldBoxName = "DanmuShield",
+  });
+
+  /// box 名可注入：TV 沿用历史的 TV* 前缀名，避免升级丢数据
+  final String settingsBoxName;
+  final String shieldBoxName;
+
   static LocalStorageService get instance => Get.find<LocalStorageService>();
 
   /// 首次运行
@@ -61,6 +70,9 @@ class LocalStorageService extends GetxService {
   /// 弹幕开启
   static const String kDanmuEnable = "DanmuEnable";
 
+  /// 弹幕字重
+  static const String kDanmuFontWeight = "DanmuFontWeight";
+
   /// 硬件解码
   static const String kHardwareDecode = "HardwareDecode";
 
@@ -98,22 +110,31 @@ class LocalStorageService extends GetxService {
   /// 播放器缓冲区大小
   static const String kPlayerBufferSize = "PlayerBufferSize";
 
-  /// 播放线路策略
-  /// * [0] 低延迟优先（FLV）
-  /// * [1] 稳定优先（HLS）
-  static const String kPlayerLineStrategy = "PlayerLineStrategy";
-
-  /// 强制 HTTPS：部分网络下 http 直播源会被拦截，开启后统一改写协议
+  /// 播放器强制使用HTTPS
   static const String kPlayerForceHttps = "PlayerForceHttps";
+
+  /// 播放线路策略
+  /// * [0] 低延迟优先（FLV优先）
+  /// * [1] 稳定优先（HLS优先）
+  static const String kPlayerLineStrategy = "PlayerLineStrategy";
 
   /// 自动全屏
   static const String kAutoFullScreen = "AutoFullScreen";
+
+  /// 显示SC
+  static const String kPlayerShowSuperChat = "PlayerShowSuperChat";
+
+  /// 播放器音量
+  static const String kPlayerVolume = "PlayerVolume";
 
   /// 小窗隐藏弹幕
   static const String kPIPHideDanmu = "PIPHideDanmu";
 
   /// 哔哩哔哩cookie
   static const String kBilibiliCookie = "BilibiliCookie";
+
+  /// 抖音cookie
+  static const String kDouyinCookie = "DouyinCookie";
 
   /// 斗鱼匿名设备号（32位hex，每设备持久化一份，避免共享did被风控掐流）
   static const String kDouyuDeviceId = "DouyuDeviceId";
@@ -130,6 +151,21 @@ class LocalStorageService extends GetxService {
   /// 提示哔哩哔哩登录
   static const String kBilibiliLoginTip = "BilibiliLoginTip";
 
+  /// 日志记录
+  static const String kLogEnable = "LogEnable";
+
+  /// 开启自定义播放器视频输出
+  static const String kCustomPlayerOutput = "CustomPlayerOutput";
+
+  /// 视频输出驱动
+  static const String kVideoOutputDriver = "VideoOutputDriver";
+
+  /// 视频硬件解码器
+  static const String kVideoHardwareDecoder = "VideoHardwareDecoder";
+
+  /// 音频输出驱动
+  static const String kAudioOutputDriver = "AudioOutputDriver";
+
   /// 开启自动更新关注
   static const String kAutoUpdateFollowEnable = "AutoUpdateFollowEnable";
 
@@ -139,18 +175,92 @@ class LocalStorageService extends GetxService {
   /// 开启多线程更新关注
   static const String kUpdateFollowThreadCount = "UpdateFollowThreadCount";
 
-  /// 日志中必须脱敏的键。
-  static const Set<String> sensitiveKeys = {kBilibiliCookie, kDouyuCookie};
+  /// WebDAV_服务器地址
+  static const String kWebDAVUri = "WebDAVUri";
+
+  /// WebDAV_登录账号
+  static const String kWebDAVUser = "WebDAVUser";
+
+  /// WebDAV_登录密码
+  static const String kWebDAVPassword = "kWebDAVPassword";
+
+  /// WebDAV_最后一次上传时间
+  static const String kWebDAVLastUploadTime = "kWebDAVLastUploadTime";
+
+  /// WebDAV_最后一次备份时间
+  static const String kWebDAVLastRecoverTime = "kWebDAVLastRecoverTime";
+
+  /// 日志中必须脱敏的键：账号 Cookie、WebDAV 凭据、设备身份。
+  /// 取两端超集：TV 端此前漏掉了斗鱼设备号，会在日志里明文打出
+  static const Set<String> sensitiveKeys = {
+    kBilibiliCookie,
+    kDouyinCookie,
+    kDouyuCookie,
+    kDouyuDeviceId,
+    kWebDAVUri,
+    kWebDAVUser,
+    kWebDAVPassword,
+  };
+
+  /// 仅属于本机、不进入 WebDAV/配置备份的键。
+  /// 账号会话、设备身份、WebDAV 连接信息一旦跨设备复制，
+  /// 既可能造成串号，也会把凭据带进备份文件。
+  static const Set<String> localOnlyKeys = {
+    kFirstRun,
+    kLogEnable,
+    kDouyuDeviceId,
+    kBilibiliCookie,
+    kDouyinCookie,
+    kDouyuCookie,
+    kWebDAVUri,
+    kWebDAVUser,
+    kWebDAVPassword,
+    kWebDAVLastUploadTime,
+    kWebDAVLastRecoverTime,
+  };
 
   late Box settingsBox;
   late Box<String> shieldBox;
 
   Future init() async {
     // 两个 box 互不依赖，并行打开
-    final settingsFuture = Hive.openBox("TVLocalStorage");
-    final shieldFuture = Hive.openBox<String>("TVDanmuShield");
+    final settingsFuture = Hive.openBox(settingsBoxName);
+    final shieldFuture = Hive.openBox<String>(shieldBoxName);
     settingsBox = await settingsFuture;
     shieldBox = await shieldFuture;
+  }
+
+  /// 可进入备份/导出的设置快照。
+  Map<String, dynamic> exportableSettings() {
+    final result = <String, dynamic>{};
+    settingsBox.toMap().forEach((key, value) {
+      if (key is String && !localOnlyKeys.contains(key)) {
+        result[key] = value;
+      }
+    });
+    return result;
+  }
+
+  /// 用备份中的设置覆盖本地，但保留 [localOnlyKeys]：
+  /// 恢复别人的备份不应该把本机 WebDAV 登录状态、设备号或账号会话一起替换掉。
+  Future<void> restoreSettings(Map<String, dynamic> data) async {
+    final localValues = <String, dynamic>{};
+    for (final key in localOnlyKeys) {
+      if (settingsBox.containsKey(key)) {
+        localValues[key] = settingsBox.get(key);
+      }
+    }
+
+    final incoming = Map<String, dynamic>.from(data)
+      ..removeWhere((key, _) => localOnlyKeys.contains(key));
+
+    await settingsBox.clear();
+    if (incoming.isNotEmpty) {
+      await settingsBox.putAll(incoming);
+    }
+    if (localValues.isNotEmpty) {
+      await settingsBox.putAll(localValues);
+    }
   }
 
   T getValue<T>(dynamic key, T defaultValue) {

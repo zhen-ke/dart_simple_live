@@ -32,7 +32,7 @@ import 'package:simple_live_shared/services/db_service.dart';
 import 'package:simple_live_shared/services/douyu_account_service.dart';
 import 'package:simple_live_app/services/follow_service.dart';
 import 'package:simple_live_app/app/sites.dart';
-import 'package:simple_live_app/services/local_storage_service.dart';
+import 'package:simple_live_shared/services/local_storage_service.dart';
 import 'package:simple_live_app/services/sync_service.dart';
 import 'package:simple_live_app/services/system_control_service.dart';
 import 'package:simple_live_app/widgets/status/app_loadding_widget.dart';

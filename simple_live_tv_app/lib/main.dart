@@ -25,7 +25,7 @@ import 'package:simple_live_shared/services/db_service.dart';
 import 'package:simple_live_shared/services/douyu_account_service.dart';
 import 'package:simple_live_tv_app/services/follow_user_service.dart';
 import 'package:simple_live_tv_app/app/sites.dart';
-import 'package:simple_live_tv_app/services/local_storage_service.dart';
+import 'package:simple_live_shared/services/local_storage_service.dart';
 import 'package:simple_live_tv_app/services/sync_service.dart';
 
 void main() {
@@ -141,7 +141,10 @@ Future initServices() async {
   //本地存储与数据库互不依赖：两组 Hive box 并行打开
   Log.d("Init LocalStorage Service");
   await Future.wait([
-    Get.put(LocalStorageService()).init(),
+    Get.put(LocalStorageService(
+          settingsBoxName: "TVLocalStorage",
+          shieldBoxName: "TVDanmuShield",
+        )).init(),
     Get.put(DBService(
           historyBoxName: "TVHostiry",
           followBoxName: "TVFollowUser",

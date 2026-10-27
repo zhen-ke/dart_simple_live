@@ -11,7 +11,7 @@ import 'package:simple_live_app/app/controller/base_controller.dart';
 import 'package:simple_live_shared/app/log.dart';
 import 'package:path/path.dart' as p;
 import 'package:simple_live_app/app/utils.dart';
-import 'package:simple_live_app/services/local_storage_service.dart';
+import 'package:simple_live_shared/services/local_storage_service.dart';
 
 class OtherSettingsController extends BaseController {
   RxList<LogFileModel> logFiles = <LogFileModel>[].obs;

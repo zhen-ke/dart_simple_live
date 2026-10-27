@@ -1,4 +1,4 @@
-import 'package:simple_live_tv_app/services/local_storage_service.dart';
+import 'package:simple_live_shared/services/local_storage_service.dart';
 
 import 'package:get/get.dart';
 

@@ -17,7 +17,7 @@ import 'package:simple_live_shared/models/db/history.dart';
 import 'package:simple_live_app/modules/sync/remote_sync/webdav/webdav_client.dart';
 import 'package:simple_live_shared/services/bilibili_account_service.dart';
 import 'package:simple_live_shared/services/db_service.dart';
-import 'package:simple_live_app/services/local_storage_service.dart';
+import 'package:simple_live_shared/services/local_storage_service.dart';
 
 class RemoteSyncWebDAVController extends BaseController {
   // ui
