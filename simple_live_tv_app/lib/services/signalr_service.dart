@@ -70,9 +70,11 @@ class SignalRService {
     }
     hubConnection = HubConnectionBuilder()
         .withUrl(kUrl)
-        // 断网/服务端重启后自动重连；null 表示该次重试失败后放弃
+        // 断网/服务端重启后自动重连，退避 2s/5s/10s/20s 共 4 次；
+        // 列表耗尽即停止重连——终止用的 null 由 DefaultRetryPolicy 自行追加，
+        // 这里传 null 会破坏 List<int> 类型且语义重复
         .withAutomaticReconnect(
-          retryDelays: [2000, 5000, 10000, 20000, null],
+          retryDelays: [2000, 5000, 10000, 20000],
         )
         .build();
     hubConnection!.onclose(({Exception? error}) {

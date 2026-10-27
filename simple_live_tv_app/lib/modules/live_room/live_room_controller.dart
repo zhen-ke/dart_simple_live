@@ -761,16 +761,18 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
       updateTime: DateTime.now(),
     );
 
-    DBService.instance.addOrUpdateHistory(history);
+    // 观看记录落盘：调用方是同步的进房流程，不需要等待写盘完成
+    unawaited(DBService.instance.addOrUpdateHistory(history));
   }
 
   /// 关注用户
-  void followUser() {
+  void followUser() async {
     if (detail.value == null) {
       return;
     }
     var id = "${site.id}_$roomId";
-    DBService.instance.addFollow(
+    // 先落盘再发事件：事件触发列表刷新，写慢了会读到旧数据
+    await DBService.instance.addFollow(
       FollowUser(
         id: id,
         roomId: roomId,
@@ -795,7 +797,8 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     // }
 
     var id = "${site.id}_$roomId";
-    DBService.instance.deleteFollow(id);
+    // 先落盘再发事件：事件触发列表刷新，删慢了会读到旧数据
+    await DBService.instance.deleteFollow(id);
     followed.value = false;
     EventBus.instance.emit(Constant.kUpdateFollow, id);
     SmartDialog.showToast("已取消关注");

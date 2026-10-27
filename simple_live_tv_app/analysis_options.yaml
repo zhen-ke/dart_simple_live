@@ -3,9 +3,16 @@
 # 与 app 端保持同一套规则，避免两端因为 lint 门槛不同再次出现"只改了一边"。
 # 基线 flutter_lints 已包含 avoid_print 等基础规则。
 #
-# 注意：首次开启会暴露一批存量告警，主要来自 SmartDialog.showToast
-# （返回 Future<void>，全仓约 43 处）。这类"发完就不管"的调用按规则
-# 应显式写成 unawaited(...)；新代码请直接遵守。
+# 实测基线（2026-10，flutter analyze）：
+# 全量 139 条告警，其中 126 条来自下面两条规则（unawaited 50 / discarded 76）。
+# 绝大多数是 UI 与平台侧"发完就不管"的调用，没有可恢复的失败路径。
+# 存量暂不清理，规则用于拦住新代码里的漏 await。
+analyzer:
+  exclude:
+    - build/**
+    - android/**
+    - windows/**
+
 include: package:flutter_lints/flutter.yaml
 
 linter:

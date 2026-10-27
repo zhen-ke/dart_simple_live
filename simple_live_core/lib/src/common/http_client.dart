@@ -15,6 +15,9 @@ class HttpClient {
   HttpClient() {
     dio = Dio(
       BaseOptions(
+        // 连接超时只能在 BaseOptions 层设置：dio 5.9 的 Options 已无
+        // connectTimeout 参数，单请求无法覆盖它。各方法的 timeout 参数
+        // 只作用于 receive/send 两个阶段。
         connectTimeout: Duration(seconds: 20),
         receiveTimeout: Duration(seconds: 20),
         sendTimeout: Duration(seconds: 20),
@@ -43,7 +46,6 @@ class HttpClient {
         options: Options(
           responseType: ResponseType.plain,
           headers: header,
-          connectTimeout: timeout,
           receiveTimeout: timeout,
           sendTimeout: timeout,
         ),
@@ -80,7 +82,6 @@ class HttpClient {
         options: Options(
           responseType: ResponseType.json,
           headers: header,
-          connectTimeout: timeout,
           receiveTimeout: timeout,
           sendTimeout: timeout,
         ),
@@ -124,7 +125,6 @@ class HttpClient {
           headers: header,
           contentType:
               formUrlEncoded ? Headers.formUrlEncodedContentType : null,
-          connectTimeout: timeout,
           receiveTimeout: timeout,
           sendTimeout: timeout,
         ),
@@ -161,7 +161,6 @@ class HttpClient {
         options: Options(
           headers: header,
           receiveDataWhenStatusError: true,
-          connectTimeout: timeout,
           receiveTimeout: timeout,
           sendTimeout: timeout,
         ),

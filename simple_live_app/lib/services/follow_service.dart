@@ -81,7 +81,7 @@ class FollowService extends GetxService {
 
   // 修改标签
   void updateFollowUserTag(FollowUserTag tag) {
-    DBService.instance.updateFollowTag(tag);
+    unawaited(DBService.instance.updateFollowTag(tag));
     // 查找并修改
     var index = followTagList.indexWhere((oTag) => oTag.id == tag.id);
     followTagList[index] = tag;
@@ -106,7 +106,7 @@ class FollowService extends GetxService {
     tag.userId.removeWhere((id) => toRemove.contains(id));
     // 更新数据库
     if (toRemove.isNotEmpty) {
-      DBService.instance.updateFollowTag(tag);
+      unawaited(DBService.instance.updateFollowTag(tag));
     }
     // 标签内排序
     curTagFollowList.sort(

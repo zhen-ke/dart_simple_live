@@ -93,7 +93,7 @@ class WebScoketUtils {
       await channel.ready;
       // 握手期间连接可能被主动关闭或被更新的连接取代
       if (gen != _connectGen) {
-        channel.sink.close();
+        await channel.sink.close();
         return;
       }
       _onChannelReady(channel);
@@ -175,13 +175,15 @@ class WebScoketUtils {
 
   /// 释放当前通道，不影响重连调度
   void _teardownChannel() {
-    streamSubscription?.cancel();
+    // 取消订阅与关闭 sink 都是"发完就不管"的清理动作，
+    // 但必须显式表达忽略，避免与真正的漏 await 混在一起
+    unawaited(streamSubscription?.cancel());
     streamSubscription = null;
 
     heartBeatTimer?.cancel();
     heartBeatTimer = null;
 
-    webSocket?.sink.close();
+    unawaited(webSocket?.sink.close());
     webSocket = null;
   }
 

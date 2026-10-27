@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:get/get.dart';
 import 'package:hive/hive.dart';
 import 'package:simple_live_app/app/log.dart';
@@ -202,13 +204,13 @@ class LocalStorageService extends GetxService {
     }
   }
 
-  Future setValue<T>(dynamic key, T value) async {
+  /// 写入设置项。
+  ///
+  /// 设置是"发完就不管"的持久化：全仓没有任何调用方 await 它，
+  /// 也没有可恢复的失败路径。返回 Future 只会制造"可以等待"的错觉，
+  /// 因此签名就是 void，内部显式 unawaited 表达忽略意图。
+  void setValue<T>(dynamic key, T value) {
     Log.d("Set LocalStorage：$key\r\n$value");
-    return await settingsBox.put(key, value);
-  }
-
-  Future removeValue<T>(dynamic key) async {
-    Log.d("Remove LocalStorage：$key");
-    return await settingsBox.delete(key);
+    unawaited(settingsBox.put(key, value));
   }
 }

@@ -119,9 +119,11 @@ class DanmakuDecodeWorker {
 
     final starting = _start();
     _startTask = starting;
-    starting.catchError((Object _) {
+    // 失败时复位 _startTask 以便下次重试；这条旁路 future 只为副作用存在，
+    // 错误本身仍由调用方 await 到的 starting 抛出，这里显式忽略
+    unawaited(starting.catchError((Object _) {
       if (identical(_startTask, starting)) _startTask = null;
-    });
+    }));
     return starting;
   }
 

@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:canvas_danmaku/canvas_danmaku.dart';
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:simple_live_tv_app/app/controller/base_controller.dart';
 import 'package:get/get.dart';

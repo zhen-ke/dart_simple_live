@@ -113,7 +113,8 @@ class FollowUserController extends BasePageController<FollowUser> {
   }
 
   void updateItem(FollowUser item){
-    FollowService.instance.addFollow(item);
+    // 同步方法内无法 await，写盘由 FollowService 内部处理
+    unawaited(FollowService.instance.addFollow(item));
   }
   // 修改item的标签
   void setItemTag(FollowUser item, FollowUserTag targetTag) {
@@ -189,7 +190,8 @@ class FollowUserController extends BasePageController<FollowUser> {
     userTagList.insert(newIndex, item);
     tagList.value = tagList.take(3).toList();
     tagList.addAll(userTagList);
-    DBService.instance.updateFollowTagOrder(userTagList);
+    // 顺序表独立落盘，失败不回滚 UI 顺序（下次进入按库内顺序显示）
+    unawaited(DBService.instance.updateFollowTagOrder(userTagList));
   }
 
   @override
