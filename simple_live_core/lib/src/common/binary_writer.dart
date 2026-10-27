@@ -49,9 +49,14 @@ class BinaryWriter {
 }
 
 class BinaryReader {
-  Uint8List buffer;
+  final Uint8List buffer;
   int position = 0;
   BinaryReader(this.buffer);
+
+  /// 整块缓冲的视图，读取时按 position 直接取，
+  /// 不再为每个字段 getRange().toList() 装箱 + fromList 拷贝
+  late final ByteData _data = ByteData.sublistView(buffer);
+
   int get length => buffer.length;
 
   /// 从当前流中读取下一个字节，并使流的当前位置提升 1 个字节
@@ -68,26 +73,17 @@ class BinaryReader {
   /// 返回整数
   int readInt(int len, {Endian endian = Endian.big}) {
     var result = 0;
-    // if (len == 1) {
-    //   result = buffer[position];
-    //   position += len;
-    //   return result;
-    // }
-    var bytes =
-        Uint8List.fromList(buffer.getRange(position, position + len).toList());
-    var byteBuffer = bytes.buffer;
-    var data = ByteData.view(byteBuffer);
     if (len == 1) {
-      result = data.getUint8(0);
+      result = _data.getUint8(position);
     }
     if (len == 2) {
-      result = data.getInt16(0, endian);
+      result = _data.getInt16(position, endian);
     }
     if (len == 4) {
-      result = data.getInt32(0, endian);
+      result = _data.getInt32(position, endian);
     }
     if (len == 8) {
-      result = data.getInt64(0, endian);
+      result = _data.getInt64(position, endian);
     }
     position += len;
     return result;
@@ -121,8 +117,8 @@ class BinaryReader {
   /// [len] 指定长度
   /// 返回字节数组
   Uint8List readBytes(int len) {
-    var bytes =
-        Uint8List.fromList(buffer.getRange(position, position + len).toList());
+    // 返回视图而不是拷贝：调用方通常读完即丢（斗鱼一帧一次）
+    var bytes = Uint8List.sublistView(buffer, position, position + len);
     position += len;
     return bytes;
   }
@@ -133,15 +129,11 @@ class BinaryReader {
   /// 返回浮点数
   double readFloat(int len, {Endian endian = Endian.big}) {
     var result = 0.0;
-    var bytes =
-        Uint8List.fromList(buffer.getRange(position, position + len).toList());
-    var byteBuffer = bytes.buffer;
-    var data = ByteData.view(byteBuffer);
     if (len == 4) {
-      result = data.getFloat32(0, endian);
+      result = _data.getFloat32(position, endian);
     }
     if (len == 8) {
-      result = data.getFloat64(0, endian);
+      result = _data.getFloat64(position, endian);
     }
     position += len;
     return result;

@@ -935,16 +935,21 @@ Widget buildDanmuView(VideoState videoState, LiveRoomController controller) {
     child: Obx(
       () => Offstage(
         offstage: !controller.showDanmakuState.value,
-        child: Padding(
-          padding: controller.fullScreenState.value
-              ? EdgeInsets.only(
-                  top: AppSettingsController.instance.danmuTopMargin.value,
-                  bottom:
-                      AppSettingsController.instance.danmuBottomMargin.value,
-                )
-              : EdgeInsets.zero,
-          child: RepaintBoundary(
-            child: controller.danmakuView!,
+        // Offstage 只是不绘制，弹幕画布的 ticker 还在跑，
+        // 关弹幕时一并停掉动画
+        child: TickerMode(
+          enabled: controller.showDanmakuState.value,
+          child: Padding(
+            padding: controller.fullScreenState.value
+                ? EdgeInsets.only(
+                    top: AppSettingsController.instance.danmuTopMargin.value,
+                    bottom:
+                        AppSettingsController.instance.danmuBottomMargin.value,
+                  )
+                : EdgeInsets.zero,
+            child: RepaintBoundary(
+              child: controller.danmakuView!,
+            ),
           ),
         ),
       ),

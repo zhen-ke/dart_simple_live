@@ -466,17 +466,36 @@ class FollowService extends GetxService {
   Future inputJson(String content) async {
     var data = jsonDecode(content);
 
+    // 先在内存里合并：同名标签只取一次、userId 去重，
+    // 最后 putAll 一次落盘。逐条 await put 每条都会触发一次写入
+    final follows = <String, FollowUser>{};
+    final tags = <String, FollowUserTag>{};
+
     for (var item in data) {
       var follow = FollowUser.fromJson(item);
+      follows[follow.id] = follow;
       // 导入关注列表同时导入标签列表 此方法可优化为所有导入逻辑
       if (follow.tag != "全部") {
         // logic: 尝试添加，存在则返回已存在的对象
-        var tag = await DBService.instance.addFollowTag(follow.tag);
+        var tag = tags[follow.tag] ??
+            DBService.instance.getFollowTag(follow.tag) ??
+            FollowUserTag(
+              id: DBService.instance.uuid.v4(),
+              tag: follow.tag,
+              userId: [],
+            );
         // 更新tag
         tag.userId.addIf(!tag.userId.contains(follow.id), follow.id);
-        await DBService.instance.updateFollowTag(tag);
+        tags[follow.tag] = tag;
       }
-      await DBService.instance.addFollow(follow);
+    }
+
+    if (tags.isNotEmpty) {
+      await DBService.instance.tagBox
+          .putAll({for (var tag in tags.values) tag.id: tag});
+    }
+    if (follows.isNotEmpty) {
+      await DBService.instance.followBox.putAll(follows);
     }
   }
 

@@ -127,34 +127,137 @@ class BiliBiliSite implements LiveSite {
     return LiveCategoryResult(hasMore: hasMore, items: items);
   }
 
+  static const String _playInfoUrl =
+      "https://api.live.bilibili.com/xlive/web-room/v2/index/getRoomPlayInfo";
+
+  /// 进房时 getPlayQualites 与 getPlayUrls 打的是同一个 getRoomPlayInfo，
+  /// 参数只差 qn。首次响应按房间缓存，qn 命中就直接复用，省掉进房时
+  /// 第二次几百 KB 的大响应往返；qn 不同或超过 TTL 才重新请求。
+  static const Duration _playInfoCacheTtl = Duration(seconds: 30);
+  String? _playInfoRoomId;
+  int? _playInfoQn;
+  DateTime? _playInfoAt;
+  dynamic _playInfoData;
+
+  /// 两处请求参数必须一致，缓存下来的响应才能直接当取流响应用：
+  /// 只要 avc（codec 0）的 flv/fmp4（format 0,2）
+  Future<dynamic> _requestPlayInfo(String roomId, {int? qn}) async {
+    return HttpClient.instance.getJson(
+      _playInfoUrl,
+      queryParameters: {
+        "room_id": roomId,
+        "protocol": "0,1",
+        "format": "0,2",
+        "codec": "0",
+        "platform": "web",
+        if (qn != null) "qn": "$qn",
+      },
+      header: await getHeader(),
+    );
+  }
+
+  dynamic _playurlNode(dynamic result) {
+    if (result is! Map) return null;
+    var data = result["data"];
+    if (data is! Map) return null;
+    var playurlInfo = data["playurl_info"];
+    if (playurlInfo is! Map) return null;
+    var playurl = playurlInfo["playurl"];
+    return playurl is Map ? playurl : null;
+  }
+
+  /// 拍平 stream/format/codec 三层，清晰度和取流都从这里取
+  Iterable<Map> _codecs(dynamic result) sync* {
+    var playurl = _playurlNode(result);
+    if (playurl == null) return;
+    var streams = playurl["stream"];
+    if (streams is! List) return;
+    for (var stream in streams) {
+      if (stream is! Map) continue;
+      var formats = stream["format"];
+      if (formats is! List) continue;
+      for (var format in formats) {
+        if (format is! Map) continue;
+        var codecs = format["codec"];
+        if (codecs is! List) continue;
+        for (var codec in codecs) {
+          if (codec is Map) yield codec;
+        }
+      }
+    }
+  }
+
+  /// 响应里当前实际下发的清晰度，用于判断缓存能否直接复用
+  int? _readCurrentQn(dynamic result) {
+    for (var codec in _codecs(result)) {
+      var qn = int.tryParse("${codec["current_qn"]}");
+      if (qn != null) return qn;
+    }
+    return null;
+  }
+
+  List<int> _readAcceptQn(dynamic result) {
+    for (var codec in _codecs(result)) {
+      var acceptQn = codec["accept_qn"];
+      if (acceptQn is List) {
+        return acceptQn
+            .map((e) => int.tryParse("$e") ?? 0)
+            .where((e) => e > 0)
+            .toList();
+      }
+    }
+    return const [];
+  }
+
+  void _rememberPlayInfo(String roomId, dynamic result) {
+    if (result is! Map) return;
+    _playInfoRoomId = roomId;
+    _playInfoQn = _readCurrentQn(result);
+    _playInfoAt = DateTime.now();
+    _playInfoData = result;
+  }
+
+  dynamic _cachedPlayInfo(String roomId, int? qn) {
+    var data = _playInfoData;
+    var at = _playInfoAt;
+    if (data == null || at == null) return null;
+    if (DateTime.now().difference(at) > _playInfoCacheTtl) {
+      // 过期即释放，不把几百 KB 的响应一直挂在站点实例上
+      _playInfoData = null;
+      _playInfoQn = null;
+      _playInfoAt = null;
+      return null;
+    }
+    if (_playInfoRoomId != roomId) return null;
+    if (qn == null || _playInfoQn != qn) return null;
+    return data;
+  }
+
   @override
   Future<List<LivePlayQuality>> getPlayQualites(
       {required LiveRoomDetail detail}) async {
     List<LivePlayQuality> qualities = [];
-    var result = await HttpClient.instance.getJson(
-      "https://api.live.bilibili.com/xlive/web-room/v2/index/getRoomPlayInfo",
-      queryParameters: {
-        "room_id": detail.roomId,
-        "protocol": "0,1",
-        "format": "0,1,2",
-        "codec": "0,1",
-        "platform": "web",
-      },
-      header: await getHeader(),
-    );
+    var result = await _requestPlayInfo(detail.roomId);
+    _rememberPlayInfo(detail.roomId, result);
+
     var qualitiesMap = <int, String>{};
-    for (var item in result["data"]["playurl_info"]["playurl"]["g_qn_desc"]) {
-      qualitiesMap[int.tryParse(item["qn"].toString()) ?? 0] =
-          item["desc"].toString();
+    var playurl = _playurlNode(result);
+    var descriptions = playurl?["g_qn_desc"];
+    if (descriptions is List) {
+      for (var item in descriptions) {
+        if (item is! Map) continue;
+        qualitiesMap[int.tryParse(item["qn"].toString()) ?? 0] =
+            item["desc"].toString();
+      }
     }
 
-    for (var item in result["data"]["playurl_info"]["playurl"]["stream"][0]
-        ["format"][0]["codec"][0]["accept_qn"]) {
-      var qualityItem = LivePlayQuality(
-        quality: qualitiesMap[item] ?? "未知清晰度",
-        data: item,
+    for (var qn in _readAcceptQn(result)) {
+      qualities.add(
+        LivePlayQuality(
+          quality: qualitiesMap[qn] ?? "未知清晰度",
+          data: qn,
+        ),
       );
-      qualities.add(qualityItem);
     }
     return qualities;
   }
@@ -164,32 +267,23 @@ class BiliBiliSite implements LiveSite {
       {required LiveRoomDetail detail,
       required LivePlayQuality quality}) async {
     List<String> urls = [];
-    var result = await HttpClient.instance.getJson(
-      "https://api.live.bilibili.com/xlive/web-room/v2/index/getRoomPlayInfo",
-      queryParameters: {
-        "room_id": detail.roomId,
-        "protocol": "0,1",
-        "format": "0,2",
-        "codec": "0",
-        "platform": "web",
-        "qn": quality.data,
-      },
-      header: await getHeader(),
-    );
-    var streamList = result["data"]["playurl_info"]["playurl"]["stream"];
-    for (var streamItem in streamList) {
-      var formatList = streamItem["format"];
-      for (var formatItem in formatList) {
-        var codecList = formatItem["codec"];
-        for (var codecItem in codecList) {
-          var urlList = codecItem["url_info"];
-          var baseUrl = codecItem["base_url"].toString();
-          for (var urlItem in urlList) {
-            urls.add(
-              "${urlItem["host"]}$baseUrl${urlItem["extra"]}",
-            );
-          }
-        }
+    var qn = int.tryParse("${quality.data}");
+    var result = _cachedPlayInfo(detail.roomId, qn);
+    if (result == null) {
+      result = await _requestPlayInfo(detail.roomId, qn: qn);
+      // 换清晰度后重新请求的响应同样缓存，来回切换不必重复拉流
+      _rememberPlayInfo(detail.roomId, result);
+    }
+
+    for (var codec in _codecs(result)) {
+      var urlList = codec["url_info"];
+      if (urlList is! List) continue;
+      var baseUrl = codec["base_url"].toString();
+      for (var urlItem in urlList) {
+        if (urlItem is! Map) continue;
+        urls.add(
+          "${urlItem["host"]}$baseUrl${urlItem["extra"]}",
+        );
       }
     }
     // 对链接进行排序，包含mcdn的在后

@@ -1,8 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
+import 'dart:typed_data' show Endian;
 
 import 'package:simple_live_core/simple_live_core.dart';
+import 'package:simple_live_core/src/common/danmaku_decode_worker.dart';
 import 'package:simple_live_core/src/common/web_socket_util.dart';
 
 import '../common/binary_writer.dart';
@@ -21,6 +22,7 @@ class DouyuDanmaku implements LiveDanmaku {
 
   WebScoketUtils? webScoketUtils;
   int _startGeneration = 0;
+  DanmakuDecodeWorker? _decoderWorker;
 
   @override
   Future start(dynamic args) async {
@@ -72,36 +74,44 @@ class DouyuDanmaku implements LiveDanmaku {
     onMessage = null;
     onClose = null;
     webScoketUtils?.close();
+    _decoderWorker?.dispose();
+    _decoderWorker = null;
   }
 
   void decodeMessage(List<int> data) {
-    try {
-      String? result = deserializeDouyu(data);
-      if (result == null) {
-        return;
-      }
-      var jsonData = sttToJObject(result);
-
-      var type = jsonData["type"]?.toString();
-      //斗鱼好像不会返回人气值
-      if (type == "chatmsg") {
-        // 屏蔽阴间弹幕
-        if (jsonData["dms"] == null) {
-          return;
-        }
-        var col = int.tryParse(jsonData["col"].toString()) ?? 0;
-        var liveMsg = LiveMessage(
-          type: LiveMessageType.chat,
-          userName: jsonData["nn"].toString(),
-          message: jsonData["txt"].toString(),
-          color: getColor(col),
+    final generation = _startGeneration;
+    final wallTime = Stopwatch()..start();
+    final decoder = _decoderWorker ??= DanmakuDecodeWorker();
+    unawaited(
+      decoder.decodeDouyu(data).then<void>((decoded) {
+        wallTime.stop();
+        if (generation != _startGeneration) return;
+        LiveMetrics.instance.recordDanmakuDecode(
+          Duration(
+            microseconds: (decoded['elapsedUs'] as num?)?.toInt() ?? 0,
+          ),
+          messageCount: (decoded['messageCount'] as num?)?.toInt() ?? 0,
+          wallElapsed: wallTime.elapsed,
         );
-
-        onMessage?.call(liveMsg);
-      }
-    } catch (e) {
-      CoreLog.error(e);
-    }
+        if (decoded['error'] != null) CoreLog.error(decoded['error']);
+        for (final raw in decoded['messages'] as List? ?? const []) {
+          if (raw is! Map) continue;
+          if (raw['kind'] == 'chat') {
+            onMessage?.call(
+              LiveMessage(
+                type: LiveMessageType.chat,
+                userName: raw['userName'].toString(),
+                message: raw['message'].toString(),
+                color: getColor((raw['colorType'] as num?)?.toInt() ?? 0),
+              ),
+            );
+          }
+        }
+      }).catchError((Object error, StackTrace stackTrace) {
+        wallTime.stop();
+        if (generation == _startGeneration) CoreLog.error(error);
+      }),
+    );
   }
 
   List<int> serializeDouyu(String body) {
@@ -125,62 +135,6 @@ class DouyuDanmaku implements LiveDanmaku {
       CoreLog.error(e);
       return [];
     }
-  }
-
-  String? deserializeDouyu(List<int> buffer) {
-    try {
-      var reader = BinaryReader(Uint8List.fromList(buffer));
-      int fullMsgLength =
-          reader.readInt32(endian: Endian.little); //fullMsgLength
-      reader.readInt32(endian: Endian.little); //fullMsgLength2
-      int bodyLength = fullMsgLength - 9;
-      reader.readShort(endian: Endian.little); //packType
-      reader.readByte(endian: Endian.little); //encrypted
-      reader.readByte(endian: Endian.little); //reserved
-
-      var bytes = reader.readBytes(bodyLength);
-
-      reader.readByte(endian: Endian.little); //固定为0
-      return utf8.decode(bytes);
-    } catch (e) {
-      CoreLog.error(e);
-      return null;
-    }
-  }
-
-  //辣鸡STT
-  dynamic sttToJObject(String str) {
-    if (str.contains("//")) {
-      var result = [];
-      for (var field in str.split("//")) {
-        if (field.isEmpty) {
-          continue;
-        }
-        result.add(sttToJObject(field));
-      }
-      return result;
-    }
-    if (str.contains("@=")) {
-      var result = {};
-      for (var field in str.split('/')) {
-        if (field.isEmpty) {
-          continue;
-        }
-        var tokens = field.split("@=");
-        var k = tokens[0];
-        var v = unscapeSlashAt(tokens[1]);
-        result[k] = sttToJObject(v);
-      }
-      return result;
-    } else if (str.contains("@A=")) {
-      return sttToJObject(unscapeSlashAt(str));
-    } else {
-      return unscapeSlashAt(str);
-    }
-  }
-
-  String unscapeSlashAt(String str) {
-    return str.replaceAll("@S", "/").replaceAll("@A", "@");
   }
 
   LiveMessageColor getColor(int type) {

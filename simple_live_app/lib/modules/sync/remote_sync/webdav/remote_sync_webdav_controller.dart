@@ -1,21 +1,16 @@
 import 'dart:convert';
-import 'dart:io';
 import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
-import 'package:path/path.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:simple_live_app/app/constant.dart';
 import 'package:simple_live_app/app/controller/app_settings_controller.dart';
 import 'package:simple_live_app/app/controller/base_controller.dart';
 import 'package:simple_live_app/app/event_bus.dart';
 import 'package:simple_live_app/app/log.dart';
 import 'package:simple_live_app/app/utils.dart';
-import 'package:simple_live_app/app/utils/archive.dart';
-import 'package:simple_live_app/app/utils/document.dart';
 import 'package:simple_live_app/models/db/follow_user.dart';
 import 'package:simple_live_app/models/db/follow_user_tag.dart';
 import 'package:simple_live_app/models/db/history.dart';
@@ -165,69 +160,40 @@ class RemoteSyncWebDAVController extends BaseController {
 
   // 备份所有数据
   Future<List<int>> _backupData() async {
-    final archive = Archive();
-    List<int> zipBytes = [];
-    // 获取本地备份路径
-    var dir = (await getApplicationSupportDirectory()).path;
-    var profile = Directory(join(dir, 'backup'));
-    if (!profile.existsSync()) {
-      profile.createSync();
-    }
+    // Hive box 绑在主 isolate，只在这里取值；
+    // jsonEncode 和 zip 压缩都是纯 CPU 活，整体丢到后台 isolate，
+    // 历史几千条时不会再卡住 UI
+    final payloads = <String, dynamic>{
+      _userFollowJsonName: {
+        'data':
+            DBService.instance.getFollowList().map((e) => e.toJson()).toList(),
+      },
+      _userTagsJsonName: {
+        'data': DBService.instance
+            .getFollowTagList()
+            .map((e) => e.toJson())
+            .toList(),
+      },
+      _userHistoriesJsonName: {
+        'data': DBService.instance.getHistores().map((e) => e.toJson()).toList(),
+      },
+      _userBlockedWordJsonName: {
+        'data': AppSettingsController.instance.shieldList.toList(),
+      },
+      _userBilibiliAccountJsonName: {
+        'data': {'cookie': BiliBiliAccountService.instance.cookie},
+      },
+      _userSettingsJsonName: {
+        'data': LocalStorageService.instance.settingsBox.toMap(),
+      },
+    };
     try {
-      // archive.add(filepath, data_map) 会导致文件损坏
-      // follows
-      var userFollowList = DBService.instance.getFollowList();
-      var dataFollowsMap = {
-        'data': userFollowList.map((e) => e.toJson()).toList()
-      };
-      final userFollowJsonFile = File(join(profile.path, _userFollowJsonName));
-      await userFollowJsonFile.writeAsString(jsonEncode(dataFollowsMap));
-      // 用户自定义标签
-      var userTagsList = DBService.instance.getFollowTagList();
-      var dataTagsMap = {'data': userTagsList.map((e) => e.toJson()).toList()};
-      var userTagsJsonFile = File(join(profile.path, _userTagsJsonName));
-      await userTagsJsonFile.writeAsString(jsonEncode(dataTagsMap));
-      // histories
-      var userHistoriesList = DBService.instance.getHistores();
-      var dataHistoriesMap = {
-        'data': userHistoriesList.map((e) => e.toJson()).toList()
-      };
-      final userHistoriesJsonFile =
-          File(join(profile.path, _userHistoriesJsonName));
-      await userHistoriesJsonFile.writeAsString(jsonEncode(dataHistoriesMap));
-
-      // blocked_word
-      var userShieldList = AppSettingsController.instance.shieldList;
-      var dataShieldListMap = {'data': userShieldList.toList()};
-      final userBlockedWordJsonFile =
-          File(join(profile.path, _userBlockedWordJsonName));
-      await userBlockedWordJsonFile
-          .writeAsString(jsonEncode(dataShieldListMap));
-
-      // bilibili_account
-      var userBiliAccountCookieMap = {
-        'data': {'cookie': BiliBiliAccountService.instance.cookie}
-      };
-      final bilibiliAccountJsonFile =
-          File(join(profile.path, _userBilibiliAccountJsonName));
-      await bilibiliAccountJsonFile
-          .writeAsString(jsonEncode(userBiliAccountCookieMap));
-      // settings
-      var settingList = LocalStorageService.instance.settingsBox.toMap();
-      var dataSettingListMap = {'data': settingList};
-      final settingJsonFile = File(join(profile.path, _userSettingsJsonName));
-      await settingJsonFile.writeAsString(jsonEncode(dataSettingListMap));
-
-      // 遍历profile路径下的所有文件压缩
-      await archive.addDirectoryToArchive(profile.path, profile.path);
-      final zipEncoder = ZipEncoder();
-      zipBytes = zipEncoder.encode(archive);
-      profile.clearSync();
+      return await Isolate.run(() => _encodeBackup(payloads));
     } catch (e) {
       Log.logPrint(e);
       SmartDialog.showToast("备份失败：$e");
+      return [];
     }
-    return zipBytes;
   }
 
   // webDAV恢复到本地
@@ -266,9 +232,13 @@ class RemoteSyncWebDAVController extends BaseController {
         try {
           // 清空本地关注列表
           await DBService.instance.followBox.clear();
+          final users = <String, FollowUser>{};
           for (var item in jsonData) {
             var user = FollowUser.fromJson(item);
-            await DBService.instance.followBox.put(user.id, user);
+            users[user.id] = user;
+          }
+          if (users.isNotEmpty) {
+            await DBService.instance.followBox.putAll(users);
           }
           Log.i('已同步关注用户列表');
         } catch (e) {
@@ -276,16 +246,19 @@ class RemoteSyncWebDAVController extends BaseController {
         }
       } else if (file.name == _userHistoriesJsonName && isSyncHistories.value) {
         try {
+          // 先在内存里比完新旧，再一次性 putAll
+          final merged = <String, History>{};
           for (var item in jsonData) {
             var history = History.fromJson(item);
-            if (DBService.instance.historyBox.containsKey(history.id)) {
-              var old = DBService.instance.historyBox.get(history.id);
-              //如果本地的更新时间比较新，就不更新
-              if (old!.updateTime.isAfter(history.updateTime)) {
-                continue;
-              }
+            var old = DBService.instance.historyBox.get(history.id);
+            //如果本地的更新时间比较新，就不更新
+            if (old is History && old.updateTime.isAfter(history.updateTime)) {
+              continue;
             }
-            await DBService.instance.addOrUpdateHistory(history);
+            merged[history.id] = history;
+          }
+          if (merged.isNotEmpty) {
+            await DBService.instance.historyBox.putAll(merged);
           }
           Log.i('已同步用户观看历史记录');
         } catch (e) {
@@ -324,12 +297,13 @@ class RemoteSyncWebDAVController extends BaseController {
           // 标签功能和关注具有依赖关系，必须同时同步
           // 清空本地标签列表
           await DBService.instance.tagBox.clear();
+          final tags = <String, FollowUserTag>{};
           for (var item in jsonData) {
             var tag = FollowUserTag.fromJson(item);
-            await DBService.instance.tagBox.put(tag.id, tag);
-            // 插入之后验证
-            var insertedTag = DBService.instance.tagBox.get(tag.id);
-            Log.i('Inserted tag: ${insertedTag?.tag}');
+            tags[tag.id] = tag;
+          }
+          if (tags.isNotEmpty) {
+            await DBService.instance.tagBox.putAll(tags);
           }
           EventBus.instance.emit(Constant.kUpdateFollow, 0);
           Log.i('已同步用户自定义标签');
@@ -364,4 +338,15 @@ class RemoteSyncWebDAVController extends BaseController {
   void changeIsSyncBilibiliAccount() {
     isSyncBilibiliAccount.value = !isSyncBilibiliAccount.value;
   }
+}
+
+/// 在后台 isolate 里把各份数据编码成 json 再打成一个 zip。
+/// 直接按文件名写进 archive，省掉原来「写临时文件 → 再读回来」的一轮磁盘 IO。
+List<int> _encodeBackup(Map<String, dynamic> payloads) {
+  final archive = Archive();
+  for (final entry in payloads.entries) {
+    final bytes = utf8.encode(jsonEncode(entry.value));
+    archive.addFile(ArchiveFile(entry.key, bytes.length, bytes));
+  }
+  return ZipEncoder().encode(archive);
 }

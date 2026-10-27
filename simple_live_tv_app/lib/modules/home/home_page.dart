@@ -55,185 +55,194 @@ class HomePage extends GetView<HomeController> {
             ],
           ),
           Expanded(
-            child: ListView(
-              padding: AppStyle.edgeInsetsV32,
-              children: [
-                Padding(
-                  padding: AppStyle.edgeInsetsH48,
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Expanded(
-                        child: HomeBigButton(
-                          autofocus: true,
-                          text: "热门直播",
-                          iconData: Remix.fire_line,
-                          onTap: controller.toHotLive,
-                        ),
-                      ),
-                      AppStyle.hGap48,
-                      Expanded(
-                        child: HomeBigButton(
-                          autofocus: true,
-                          text: "直播类目",
-                          iconData: Remix.apps_line,
-                          onTap: controller.toCategory,
-                        ),
-                      ),
-                      AppStyle.hGap48,
-                      Expanded(
-                        child: HomeBigButton(
-                          autofocus: true,
-                          text: "搜索直播",
-                          iconData: Remix.search_2_line,
-                          onTap: showSearchDialog,
-                        ),
-                      ),
-                      // AppStyle.hGap40,
-                      // Expanded(
-                      //   child: HomeBigButton(
-                      //     text: "我的关注",
-                      //     iconData: Icons.favorite_border,
-                      //     onTap: controller.toFollow,
-                      //   ),
-                      // ),
-                      AppStyle.hGap48,
-                      Expanded(
-                        child: HomeBigButton(
-                          text: "观看记录",
-                          iconData: Icons.history,
-                          onTap: controller.toHistory,
-                        ),
-                      ),
-                      AppStyle.hGap48,
-                      Expanded(
-                        child: HomeBigButton(
-                          text: "数据同步",
-                          iconData: Icons.devices,
-                          onTap: controller.toSync,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                AppStyle.vGap32,
-                Padding(
-                  padding: AppStyle.edgeInsetsH48,
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      SizedBox(
-                        width: 64.w,
-                        height: 64.w,
-                        child: Center(
-                          child: Icon(
-                            Icons.favorite_border,
-                            color: Colors.white,
-                            size: 56.w,
-                          ),
-                        ),
-                      ),
-                      AppStyle.hGap24,
-                      Expanded(
-                        child: Text(
-                          "我的关注",
-                          style: AppStyle.titleStyleWhite,
-                        ),
-                      ),
-                      Obx(
-                        () => Visibility(
-                          visible: FollowUserService.instance.updating.value,
+            // 关注列表改用 sliver 瀑布流：列表项按需构建，
+            // 不再因为 shrinkWrap 把全部关注一次性布局
+            child: Obx(
+              () => CustomScrollView(
+                slivers: [
+                  SliverPadding(
+                    // 底部间距由列表末尾的 SizedBox 统一补，避免和 vGap32 叠加
+                    padding: EdgeInsets.only(top: 32.w),
+                    sliver: SliverList(
+                      delegate: SliverChildListDelegate([
+                        Padding(
+                          padding: AppStyle.edgeInsetsH48,
                           child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
-                              SizedBox(
-                                width: 48.w,
-                                height: 48.w,
-                                child: CircularProgressIndicator(
-                                  color: Colors.white,
-                                  strokeWidth: 4.w,
+                              Expanded(
+                                child: HomeBigButton(
+                                  autofocus: true,
+                                  text: "热门直播",
+                                  iconData: Remix.fire_line,
+                                  onTap: controller.toHotLive,
                                 ),
                               ),
-                              AppStyle.hGap16,
-                              Text(
-                                "更新状态中...",
-                                style: AppStyle.textStyleWhite,
+                              AppStyle.hGap48,
+                              Expanded(
+                                child: HomeBigButton(
+                                  autofocus: true,
+                                  text: "直播类目",
+                                  iconData: Remix.apps_line,
+                                  onTap: controller.toCategory,
+                                ),
+                              ),
+                              AppStyle.hGap48,
+                              Expanded(
+                                child: HomeBigButton(
+                                  autofocus: true,
+                                  text: "搜索直播",
+                                  iconData: Remix.search_2_line,
+                                  onTap: showSearchDialog,
+                                ),
+                              ),
+                              // AppStyle.hGap40,
+                              // Expanded(
+                              //   child: HomeBigButton(
+                              //     text: "我的关注",
+                              //     iconData: Icons.favorite_border,
+                              //     onTap: controller.toFollow,
+                              //   ),
+                              // ),
+                              AppStyle.hGap48,
+                              Expanded(
+                                child: HomeBigButton(
+                                  text: "观看记录",
+                                  iconData: Icons.history,
+                                  onTap: controller.toHistory,
+                                ),
+                              ),
+                              AppStyle.hGap48,
+                              Expanded(
+                                child: HomeBigButton(
+                                  text: "数据同步",
+                                  iconData: Icons.devices,
+                                  onTap: controller.toSync,
+                                ),
                               ),
                             ],
                           ),
                         ),
-                      ),
-                      AppStyle.hGap16,
-                      HighlightButton(
-                        iconData: Icons.settings,
-                        text: "管理",
-                        onTap: showManageDialog,
-                      ),
-                      AppStyle.hGap32,
-                      HighlightButton(
-                        iconData: Icons.refresh,
-                        text: "刷新",
-                        onTap: () {
-                          FollowUserService.instance.refreshData();
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-                AppStyle.vGap32,
-                Obx(
-                  () => MasonryGridView.count(
-                    padding: AppStyle.edgeInsetsH48,
-                    itemCount: FollowUserService.instance.list.length,
-                    crossAxisCount: 3,
-                    crossAxisSpacing: 48.w,
-                    mainAxisSpacing: 48.w,
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemBuilder: (_, i) {
-                      var item = FollowUserService.instance.list[i];
-                      return Obx(
-                        () => AnchorCard(
-                          face: item.face,
-                          name: item.userName,
-                          siteId: item.siteId,
-                          liveStatus: item.liveStatus.value,
-                          roomId: item.roomId,
+                        AppStyle.vGap32,
+                        Padding(
+                          padding: AppStyle.edgeInsetsH48,
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              SizedBox(
+                                width: 64.w,
+                                height: 64.w,
+                                child: Center(
+                                  child: Icon(
+                                    Icons.favorite_border,
+                                    color: Colors.white,
+                                    size: 56.w,
+                                  ),
+                                ),
+                              ),
+                              AppStyle.hGap24,
+                              Expanded(
+                                child: Text(
+                                  "我的关注",
+                                  style: AppStyle.titleStyleWhite,
+                                ),
+                              ),
+                              Visibility(
+                                visible:
+                                    FollowUserService.instance.updating.value,
+                                child: Row(
+                                  children: [
+                                    SizedBox(
+                                      width: 48.w,
+                                      height: 48.w,
+                                      child: CircularProgressIndicator(
+                                        color: Colors.white,
+                                        strokeWidth: 4.w,
+                                      ),
+                                    ),
+                                    AppStyle.hGap16,
+                                    Text(
+                                      "更新状态中...",
+                                      style: AppStyle.textStyleWhite,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              AppStyle.hGap16,
+                              HighlightButton(
+                                iconData: Icons.settings,
+                                text: "管理",
+                                onTap: showManageDialog,
+                              ),
+                              AppStyle.hGap32,
+                              HighlightButton(
+                                iconData: Icons.refresh,
+                                text: "刷新",
+                                onTap: () {
+                                  FollowUserService.instance.refreshData();
+                                },
+                              ),
+                            ],
+                          ),
                         ),
-                      );
-                    },
-                  ),
-                ),
-                Obx(
-                  () => Visibility(
-                    visible: FollowUserService.instance.list.isEmpty,
-                    child: Column(
-                      children: [
-                        AppStyle.vGap24,
-                        LottieBuilder.asset(
-                          'assets/lotties/empty.json',
-                          width: 160.w,
-                          height: 160.w,
-                          repeat: false,
-                        ),
-                        AppStyle.vGap24,
-                        Text(
-                          "暂无任何关注\n您可以从其他端同步数据到此处",
-                          textAlign: TextAlign.center,
-                          style: AppStyle.textStyleWhite,
-                        ),
-                        AppStyle.vGap16,
-                        HighlightButton(
-                          iconData: Icons.devices,
-                          text: "同步数据",
-                          onTap: () {
-                            controller.toSync();
-                          },
-                        ),
-                      ],
+                        AppStyle.vGap32,
+                      ]),
                     ),
                   ),
-                )
-              ],
+                  SliverPadding(
+                    padding: AppStyle.edgeInsetsH48,
+                    sliver: SliverMasonryGrid.count(
+                      crossAxisCount: 3,
+                      crossAxisSpacing: 48.w,
+                      mainAxisSpacing: 48.w,
+                      childCount: FollowUserService.instance.list.length,
+                      itemBuilder: (_, i) {
+                        var item = FollowUserService.instance.list[i];
+                        return Obx(
+                          () => AnchorCard(
+                            face: item.face,
+                            name: item.userName,
+                            siteId: item.siteId,
+                            liveStatus: item.liveStatus.value,
+                            roomId: item.roomId,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  SliverToBoxAdapter(
+                    child: Visibility(
+                      visible: FollowUserService.instance.list.isEmpty,
+                      child: Column(
+                        children: [
+                          AppStyle.vGap24,
+                          LottieBuilder.asset(
+                            'assets/lotties/empty.json',
+                            width: 160.w,
+                            height: 160.w,
+                            repeat: false,
+                          ),
+                          AppStyle.vGap24,
+                          Text(
+                            "暂无任何关注\n您可以从其他端同步数据到此处",
+                            textAlign: TextAlign.center,
+                            style: AppStyle.textStyleWhite,
+                          ),
+                          AppStyle.vGap16,
+                          HighlightButton(
+                            iconData: Icons.devices,
+                            text: "同步数据",
+                            onTap: () {
+                              controller.toSync();
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  SliverToBoxAdapter(child: SizedBox(height: 32.w)),
+                ],
+              ),
             ),
           ),
         ],

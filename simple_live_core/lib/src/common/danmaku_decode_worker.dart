@@ -2,13 +2,19 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
+import 'dart:typed_data';
 
 import 'package:brotli/brotli.dart';
 import 'package:simple_live_core/src/danmaku/proto/douyin.pb.dart';
+import 'package:simple_live_core/src/model/tars/huya_danmaku.dart';
+// tars_dart 里有一个同名 BinaryReader，这里只用 core 自己的实现
+import 'package:tars_dart/tars/codec/tars_input_stream.dart' hide BinaryReader;
 
-/// Long-lived decoder isolate for the hot Bilibili/Douyin frame paths.
-/// Keeping one worker per room avoids paying Isolate.run's spawn cost for
-/// every frame while preserving frame order.
+import 'binary_writer.dart';
+
+/// Long-lived decoder isolate for the hot Bilibili/Douyin/Huya/Douyu frame
+/// paths. Keeping one worker per room avoids paying Isolate.run's spawn cost
+/// for every frame while preserving frame order.
 class DanmakuDecodeWorker {
   ReceivePort? _receivePort;
   Isolate? _isolate;
@@ -24,6 +30,12 @@ class DanmakuDecodeWorker {
 
   Future<Map<String, dynamic>> decodeDouyin(List<int> data) =>
       _decode('douyin', data);
+
+  Future<Map<String, dynamic>> decodeHuya(List<int> data) =>
+      _decode('huya', data);
+
+  Future<Map<String, dynamic>> decodeDouyu(List<int> data) =>
+      _decode('douyu', data);
 
   Future<Map<String, dynamic>> _decode(String platform, List<int> data) async {
     if (_disposed) throw StateError('Danmaku decoder is disposed');
@@ -124,11 +136,17 @@ void _danmakuDecoderMain(SendPort mainSendPort) {
     if (message is! List || message.length < 3) return;
     final requestId = message[0] as int;
     final platform = message[1] as String;
-    final data = (message[2] as List).cast<int>();
+    // 保持 Uint8List 原类型：跨 isolate 传递后仍是 Uint8List，
+    // 解码侧可以直接复用，不必再 fromList 拷一遍
+    final payload = message[2];
+    final data =
+        payload is Uint8List ? payload : (payload as List).cast<int>();
     try {
       final result = switch (platform) {
         'bilibili' => decodeBilibiliFrame(data),
         'douyin' => decodeDouyinFrame(data),
+        'huya' => decodeHuyaFrame(data),
+        'douyu' => decodeDouyuFrame(data),
         _ => <String, dynamic>{'error': 'Unknown decoder: $platform'},
       };
       mainSendPort.send(<Object?>[requestId, result]);
@@ -140,6 +158,13 @@ void _danmakuDecoderMain(SendPort mainSendPort) {
     }
   });
 }
+
+/// 帧内多条消息以控制字符分隔；正则在模块级只编译一次
+final RegExp _bilibiliMessageSeparator = RegExp(
+  r'[\x00-\x1f]+',
+  unicode: true,
+  multiLine: true,
+);
 
 /// Decode one Bilibili notification frame into isolate-sendable values.
 Map<String, dynamic> decodeBilibiliFrame(List<int> data) {
@@ -164,9 +189,7 @@ Map<String, dynamic> decodeBilibiliFrame(List<int> data) {
         decodedBody = brotli.decode(decodedBody);
       }
       final text = utf8.decode(decodedBody, allowMalformed: true);
-      final group = text.split(
-        RegExp(r'[\x00-\x1f]+', unicode: true, multiLine: true),
-      );
+      final group = text.split(_bilibiliMessageSeparator);
       for (final jsonMessage in group.where(
         (item) => item.length > 2 && item.startsWith('{'),
       )) {
@@ -301,4 +324,133 @@ Map<String, dynamic> decodeDouyinFrame(List<int> data) {
     'internalExt': internalExt,
     if (error != null) 'error': error,
   };
+}
+
+/// 已经是 Uint8List 就直接用，避免每次解码都 fromList 拷一份
+Uint8List _toBytes(List<int> data) =>
+    data is Uint8List ? data : Uint8List.fromList(data);
+
+/// Decode one Huya Tars push frame into isolate-sendable values.
+Map<String, dynamic> decodeHuyaFrame(List<int> data) {
+  final stopwatch = Stopwatch()..start();
+  final messages = <Map<String, dynamic>>[];
+  String? error;
+  try {
+    var stream = TarsInputStream(_toBytes(data));
+    var type = stream.read(0, 0, false);
+    if (type == 7) {
+      stream = TarsInputStream(stream.readBytes(1, false));
+      var pushMessage = HYPushMessage();
+      pushMessage.readFrom(stream);
+      if (pushMessage.uri == 1400) {
+        var notice = HYMessage();
+        notice.readFrom(TarsInputStream(_toBytes(pushMessage.msg)));
+        messages.add(<String, dynamic>{
+          'kind': 'chat',
+          'userName': notice.userInfo.nickName,
+          'message': notice.content,
+          'color': notice.bulletFormat.fontColor,
+        });
+      } else if (pushMessage.uri == 8006) {
+        var online = 0;
+        online = TarsInputStream(_toBytes(pushMessage.msg))
+            .read(online, 0, false);
+        messages.add(<String, dynamic>{
+          'kind': 'online',
+          'data': online,
+        });
+      }
+    }
+  } catch (e) {
+    error = '$e';
+  } finally {
+    stopwatch.stop();
+  }
+  return <String, dynamic>{
+    'messages': messages,
+    'messageCount': messages.length,
+    'elapsedUs': stopwatch.elapsedMicroseconds,
+    if (error != null) 'error': error,
+  };
+}
+
+/// Decode one Douyu STT frame into isolate-sendable values.
+Map<String, dynamic> decodeDouyuFrame(List<int> data) {
+  final stopwatch = Stopwatch()..start();
+  final messages = <Map<String, dynamic>>[];
+  String? error;
+  try {
+    var text = _deserializeDouyu(_toBytes(data));
+    var jsonData = _sttToJObject(text);
+    if (jsonData is Map) {
+      // 屏蔽阴间弹幕：dms 为空的是系统/机器人消息
+      if (jsonData["type"]?.toString() == "chatmsg" &&
+          jsonData["dms"] != null) {
+        messages.add(<String, dynamic>{
+          'kind': 'chat',
+          'userName': jsonData["nn"].toString(),
+          'message': jsonData["txt"].toString(),
+          'colorType': int.tryParse("${jsonData["col"]}") ?? 0,
+        });
+      }
+    }
+  } catch (e) {
+    error = '$e';
+  } finally {
+    stopwatch.stop();
+  }
+  return <String, dynamic>{
+    'messages': messages,
+    'messageCount': messages.length,
+    'elapsedUs': stopwatch.elapsedMicroseconds,
+    if (error != null) 'error': error,
+  };
+}
+
+String _deserializeDouyu(Uint8List buffer) {
+  var reader = BinaryReader(buffer);
+  var fullMsgLength = reader.readInt32(endian: Endian.little);
+  reader.readInt32(endian: Endian.little); //fullMsgLength2
+  var bodyLength = fullMsgLength - 9;
+  reader.readShort(endian: Endian.little); //packType
+  reader.readByte(endian: Endian.little); //encrypted
+  reader.readByte(endian: Endian.little); //reserved
+  var bytes = reader.readBytes(bodyLength);
+  reader.readByte(endian: Endian.little); //固定为0
+  return utf8.decode(bytes);
+}
+
+//辣鸡STT
+dynamic _sttToJObject(String str) {
+  if (str.contains("//")) {
+    var result = [];
+    for (var field in str.split("//")) {
+      if (field.isEmpty) {
+        continue;
+      }
+      result.add(_sttToJObject(field));
+    }
+    return result;
+  }
+  if (str.contains("@=")) {
+    var result = {};
+    for (var field in str.split('/')) {
+      if (field.isEmpty) {
+        continue;
+      }
+      var tokens = field.split("@=");
+      var k = tokens[0];
+      var v = _unscapeSlashAt(tokens[1]);
+      result[k] = _sttToJObject(v);
+    }
+    return result;
+  } else if (str.contains("@A=")) {
+    return _sttToJObject(_unscapeSlashAt(str));
+  } else {
+    return _unscapeSlashAt(str);
+  }
+}
+
+String _unscapeSlashAt(String str) {
+  return str.replaceAll("@S", "/").replaceAll("@A", "@");
 }

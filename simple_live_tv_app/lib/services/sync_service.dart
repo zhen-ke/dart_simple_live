@@ -261,8 +261,10 @@ class SyncService extends GetxService {
       if (overlay == 1) {
         await DBService.instance.followBox.clear();
       }
-      for (var user in users) {
-        await DBService.instance.followBox.put(user.id, user);
+      // 批量写入：逐条 await put 每条都会单独落盘
+      if (users.isNotEmpty) {
+        await DBService.instance.followBox
+            .putAll({for (var user in users) user.id: user});
       }
 
       SmartDialog.showToast('已同步关注用户列表');
@@ -294,15 +296,18 @@ class SyncService extends GetxService {
       if (overlay == 1) {
         await DBService.instance.historyBox.clear();
       }
+      // 先在内存里比完新旧，再一次性 putAll
+      final merged = <String, History>{};
       for (var history in histories) {
-        if (DBService.instance.historyBox.containsKey(history.id)) {
-          var old = DBService.instance.historyBox.get(history.id);
-          //如果本地的更新时间比较新，就不更新
-          if (old!.updateTime.isAfter(history.updateTime)) {
-            continue;
-          }
+        var old = DBService.instance.historyBox.get(history.id);
+        //如果本地的更新时间比较新，就不更新
+        if (old is History && old.updateTime.isAfter(history.updateTime)) {
+          continue;
         }
-        await DBService.instance.addOrUpdateHistory(history);
+        merged[history.id] = history;
+      }
+      if (merged.isNotEmpty) {
+        await DBService.instance.historyBox.putAll(merged);
       }
 
       SmartDialog.showToast('已同步观看记录');

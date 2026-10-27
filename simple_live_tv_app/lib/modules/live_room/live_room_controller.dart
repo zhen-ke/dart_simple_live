@@ -221,7 +221,10 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
         return;
       }
 
-      if (liveStatus.value != LiveStatus.live || isBackground) {
+      // 关弹幕时不再构造弹幕对象、也不再排队等 flush
+      if (liveStatus.value != LiveStatus.live ||
+          isBackground ||
+          !showDanmakuState.value) {
         return;
       }
 

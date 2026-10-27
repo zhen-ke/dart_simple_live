@@ -58,8 +58,8 @@ class FollowUserPage extends StatelessWidget {
                 crossAxisCount: 3,
                 crossAxisSpacing: 48.w,
                 mainAxisSpacing: 40.w,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
+                // 高度由外层 Expanded 约束，交给 grid 自己懒加载，
+                // shrinkWrap 会强制把所有关注一次性布局
                 itemBuilder: (_, i) {
                   var item = FollowUserService.instance.list[i];
                   return AnchorCard(

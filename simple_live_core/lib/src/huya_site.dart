@@ -6,8 +6,6 @@ import 'package:simple_live_core/src/common/http_client.dart';
 import 'package:crypto/crypto.dart';
 import 'package:simple_live_core/src/model/tars/get_cdn_token_ex_req.dart';
 import 'package:simple_live_core/src/model/tars/get_cdn_token_ex_resp.dart';
-import 'package:simple_live_core/src/model/tars/get_cdn_token_req.dart';
-import 'package:simple_live_core/src/model/tars/get_cdn_token_resp.dart';
 import 'package:simple_live_core/src/model/tars/huya_user_id.dart';
 import 'package:tars_dart/tars/net/base_tars_http.dart';
 
@@ -51,10 +49,10 @@ class HuyaSite implements LiveSite {
       LiveCategory(id: "3", name: "手游", children: []),
     ];
 
-    for (var item in categories) {
-      var items = await getSubCategores(item.id);
-      item.children.addAll(items);
-    }
+    // 四个一级分类互不依赖：并发请求，避免 4 个 RTT 串行叠加
+    await Future.wait(categories.map((item) async {
+      item.children.addAll(await getSubCategores(item.id));
+    }));
     return categories;
   }
 

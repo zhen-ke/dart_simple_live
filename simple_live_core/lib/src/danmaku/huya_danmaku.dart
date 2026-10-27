@@ -1,11 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:simple_live_core/simple_live_core.dart';
+import 'package:simple_live_core/src/common/danmaku_decode_worker.dart';
 import 'package:simple_live_core/src/common/web_socket_util.dart';
-import 'package:simple_live_core/src/model/tars/huya_danmaku.dart';
-import 'package:tars_dart/tars/codec/tars_input_stream.dart';
 import 'package:tars_dart/tars/codec/tars_output_stream.dart';
 
 class HuyaDanmakuArgs {
@@ -45,6 +43,7 @@ class HuyaDanmaku implements LiveDanmaku {
 
   late HuyaDanmakuArgs danmakuArgs;
   int _startGeneration = 0;
+  DanmakuDecodeWorker? _decoderWorker;
 
   @override
   Future start(dynamic args) async {
@@ -117,52 +116,60 @@ class HuyaDanmaku implements LiveDanmaku {
     onMessage = null;
     onClose = null;
     webScoketUtils?.close();
+    _decoderWorker?.dispose();
+    _decoderWorker = null;
   }
 
+  /// 收到WebSocket信息
   void decodeMessage(List<int> data) {
-    try {
-      var stream = TarsInputStream(Uint8List.fromList(data));
-      var type = stream.read(0, 0, false);
-      if (type == 7) {
-        stream = TarsInputStream(stream.readBytes(1, false));
-        HYPushMessage wSPushMessage = HYPushMessage();
-        wSPushMessage.readFrom(stream);
-        if (wSPushMessage.uri == 1400) {
-          HYMessage messageNotice = HYMessage();
-          messageNotice
-              .readFrom(TarsInputStream(Uint8List.fromList(wSPushMessage.msg)));
-          var uname = messageNotice.userInfo.nickName;
-          var content = messageNotice.content;
-
-          var color = messageNotice.bulletFormat.fontColor;
-
-          onMessage?.call(
-            LiveMessage(
-              type: LiveMessageType.chat,
-              color: color <= 0
-                  ? LiveMessageColor.white
-                  : LiveMessageColor.numberToColor(color),
-              message: content,
-              userName: uname,
-            ),
-          );
-        } else if (wSPushMessage.uri == 8006) {
-          int online = 0;
-          var s = TarsInputStream(Uint8List.fromList(wSPushMessage.msg));
-          online = s.read(online, 0, false);
-          onMessage?.call(
-            LiveMessage(
-              type: LiveMessageType.online,
-              data: online,
-              color: LiveMessageColor.white,
-              message: "",
-              userName: "",
-            ),
-          );
+    final generation = _startGeneration;
+    final wallTime = Stopwatch()..start();
+    final decoder = _decoderWorker ??= DanmakuDecodeWorker();
+    unawaited(
+      decoder.decodeHuya(data).then<void>((decoded) {
+        wallTime.stop();
+        if (generation != _startGeneration) return;
+        LiveMetrics.instance.recordDanmakuDecode(
+          Duration(
+            microseconds: (decoded['elapsedUs'] as num?)?.toInt() ?? 0,
+          ),
+          messageCount: (decoded['messageCount'] as num?)?.toInt() ?? 0,
+          wallElapsed: wallTime.elapsed,
+        );
+        if (decoded['error'] != null) CoreLog.error(decoded['error']);
+        for (final raw in decoded['messages'] as List? ?? const []) {
+          if (raw is! Map) continue;
+          switch (raw['kind']) {
+            case 'chat':
+              final color = (raw['color'] as num?)?.toInt() ?? 0;
+              onMessage?.call(
+                LiveMessage(
+                  type: LiveMessageType.chat,
+                  color: color <= 0
+                      ? LiveMessageColor.white
+                      : LiveMessageColor.numberToColor(color),
+                  message: raw['message'].toString(),
+                  userName: raw['userName'].toString(),
+                ),
+              );
+              break;
+            case 'online':
+              onMessage?.call(
+                LiveMessage(
+                  type: LiveMessageType.online,
+                  data: (raw['data'] as num?)?.toInt() ?? 0,
+                  color: LiveMessageColor.white,
+                  message: '',
+                  userName: '',
+                ),
+              );
+              break;
+          }
         }
-      }
-    } catch (e) {
-      CoreLog.error(e);
-    }
+      }).catchError((Object error, StackTrace stackTrace) {
+        wallTime.stop();
+        if (generation == _startGeneration) CoreLog.error(error);
+      }),
+    );
   }
 }
