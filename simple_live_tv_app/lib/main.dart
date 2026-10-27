@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:ui' show PlatformDispatcher;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -24,9 +27,30 @@ import 'package:simple_live_tv_app/services/follow_user_service.dart';
 import 'package:simple_live_tv_app/services/local_storage_service.dart';
 import 'package:simple_live_tv_app/services/sync_service.dart';
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+void main() {
+  runZonedGuarded(() async {
+    WidgetsFlutterBinding.ensureInitialized();
 
+    FlutterError.onError = (details) {
+      FlutterError.presentError(details);
+      Log.crash(details.exception, details.stack ?? StackTrace.current);
+    };
+    PlatformDispatcher.instance.onError = (error, stack) {
+      Log.crash(error, stack);
+      return true;
+    };
+
+    try {
+      await _bootstrap();
+      runApp(const MyApp());
+    } catch (error, stack) {
+      Log.crash(error, stack);
+      runApp(BootFailureApp(error: error));
+    }
+  }, (error, stack) => Log.crash(error, stack));
+}
+
+Future<void> _bootstrap() async {
   // 限制图片缓存数量与内存占用（最多缓存200张或50MB）。
   // TV 端封面/头像更密集且可用内存更小，不设上限时容易把内存顶高
   PaintingBinding.instance.imageCache.maximumSize = 200;
@@ -43,7 +67,37 @@ void main() async {
   ]);
   // 全屏
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: []);
-  runApp(const MyApp());
+}
+
+/// 初始化失败时的最小可用界面。
+class BootFailureApp extends StatelessWidget {
+  const BootFailureApp({super.key, required this.error});
+
+  final Object error;
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      home: Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  "应用初始化失败",
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 12),
+                SelectableText("$error", textAlign: TextAlign.center),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 Future initServices() async {
@@ -122,9 +176,9 @@ class MyApp extends StatelessWidget {
             ),
             //字体大小不跟随系统变化
             builder: (context, child) => MediaQuery(
-              data: MediaQuery.of(context).copyWith(
-                textScaler: const TextScaler.linear(1.0),
-              ),
+              data: MediaQuery.of(
+                context,
+              ).copyWith(textScaler: const TextScaler.linear(1.0)),
               child: child!,
             ),
           ),

@@ -11,18 +11,36 @@ import 'package:simple_live_app/app/utils.dart';
 
 class Log {
   static LogFileWriter? logFileWriter;
+
+  /// 是否输出日志：release 默认关闭，用户开启“日志记录”后打开。
+  /// 文件写入仍由 [logFileWriter] 是否存在控制。
+  static bool enabled = !kReleaseMode;
+
   static void initWriter() {
-    logFileWriter = LogFileWriter();
+    logFileWriter ??= LogFileWriter();
+    enabled = true;
   }
 
   static void disposeWriter() {
     logFileWriter?.close();
     logFileWriter = null;
+    enabled = !kReleaseMode;
   }
 
   static void writeLog(content, [Level level = Level.info]) {
-    logFileWriter
-        ?.write("[${level.name.toUpperCase()}] $_currentTime：$content");
+    if (!enabled) return;
+    logFileWriter?.write(
+      "[${level.name.toUpperCase()}] $_currentTime：$content",
+    );
+  }
+
+  /// 致命错误：不受普通日志开关影响，至少输出到控制台；
+  /// 用户开启日志文件时同时落盘，便于启动失败/未捕获异常定位。
+  static void crash(Object error, StackTrace stackTrace) {
+    final message =
+        "[FATAL] ${DateTime.now().toIso8601String()} $error\n$stackTrace";
+    debugPrint(message);
+    logFileWriter?.write(message);
   }
 
   static RxList<DebugLogModel> debugLogs = <DebugLogModel>[].obs;
@@ -62,6 +80,7 @@ class Log {
   );
 
   static void d(String message, [bool writeFile = true]) {
+    if (!enabled) return;
     addDebugLog(message, Colors.orange);
     logger.d("${DateTime.now().toString()}\n$message");
     if (writeFile) {
@@ -70,16 +89,17 @@ class Log {
   }
 
   static void i(String message, [bool writeFile = true]) {
+    if (!enabled) return;
     addDebugLog(message, Colors.blue);
     logger.i("${DateTime.now().toString()}\n$message");
     if (writeFile) {
-      logFileWriter?.write("[INFO] $_currentTime：$message");
       writeLog(message, Level.info);
     }
   }
 
   static void e(String message, StackTrace stackTrace,
       [bool writeFile = true]) {
+    if (!enabled) return;
     addDebugLog('$message\r\n\r\n$stackTrace', Colors.red);
     logger.e("${DateTime.now().toString()}\n$message", stackTrace: stackTrace);
     if (writeFile) {
@@ -88,6 +108,7 @@ class Log {
   }
 
   static void w(String message, [bool writeFile = true]) {
+    if (!enabled) return;
     addDebugLog(message, Colors.pink);
     logger.w("${DateTime.now().toString()}\n$message");
     if (writeFile) {
@@ -96,6 +117,7 @@ class Log {
   }
 
   static void logPrint(dynamic obj, [bool writeFile = true]) {
+    if (!enabled) return;
     addDebugLog(obj.toString(), Colors.red);
     if (writeFile) {
       writeLog(obj, Level.info);
@@ -207,7 +229,8 @@ class LogFileWriter {
     write("Version: ${Platform.operatingSystemVersion}");
     write("Local: ${Platform.localeName}");
     write(
-        "App Version: ${Utils.packageInfo.version}+${Utils.packageInfo.buildNumber}");
+      "App Version: ${Utils.packageInfo.version}+${Utils.packageInfo.buildNumber}",
+    );
     if (Platform.isAndroid) {
       write((await deviceInfo.androidInfo).data.toString());
     } else if (Platform.isIOS) {

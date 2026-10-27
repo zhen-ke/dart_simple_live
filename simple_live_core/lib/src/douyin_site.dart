@@ -234,7 +234,10 @@ class DouyinSite implements LiveSite {
   }
 
   @override
-  Future<LiveRoomDetail> getRoomDetail({required String roomId}) async {
+  Future<LiveRoomDetail> getRoomDetail({
+    required String roomId,
+    bool withDanmaku = true,
+  }) async {
     // 有两种roomId，一种是webRid，一种是roomId
     // roomId是一次性的，用户每次重新开播都会生成一个新的roomId
     // roomId一般长度为19位，例如：7376429659866598196
@@ -243,16 +246,19 @@ class DouyinSite implements LiveSite {
     // 这里简单进行判断，如果roomId长度小于15，则认为是webRid
     if (roomId.length <= 16) {
       var webRid = roomId;
-      return await getRoomDetailByWebRid(webRid);
+      return await getRoomDetailByWebRid(webRid, withDanmaku: withDanmaku);
     }
 
-    return await getRoomDetailByRoomId(roomId);
+    return await getRoomDetailByRoomId(roomId, withDanmaku: withDanmaku);
   }
 
   /// 通过roomId获取直播间信息
   /// - [roomId] 直播间ID
   /// - 返回直播间信息
-  Future<LiveRoomDetail> getRoomDetailByRoomId(String roomId) async {
+  Future<LiveRoomDetail> getRoomDetailByRoomId(
+    String roomId, {
+    bool withDanmaku = true,
+  }) async {
     // 读取房间信息
     var roomData = await _getRoomDataByRoomId(roomId);
 
@@ -272,7 +278,8 @@ class DouyinSite implements LiveSite {
     // roomId是一次性的，用户每次重新开播都会生成一个新的roomId
     // 所以如果roomId对应的直播间状态不是直播中，就通过webRid获取直播间信息
     if (status == 4) {
-      var result = await getRoomDetailByWebRid(webRid);
+      var result =
+          await getRoomDetailByWebRid(webRid, withDanmaku: withDanmaku);
       return result;
     }
 
@@ -293,12 +300,14 @@ class DouyinSite implements LiveSite {
       url: "https://live.douyin.com/$webRid",
       introduction: owner["signature"].toString(),
       notice: "",
-      danmakuData: DouyinDanmakuArgs(
-        webRid: webRid,
-        roomId: roomId,
-        userId: userUniqueId,
-        cookie: headers["cookie"],
-      ),
+      danmakuData: withDanmaku
+          ? DouyinDanmakuArgs(
+              webRid: webRid,
+              roomId: roomId,
+              userId: userUniqueId,
+              cookie: headers["cookie"],
+            )
+          : null,
       data: room["stream_url"],
     );
   }
@@ -306,20 +315,32 @@ class DouyinSite implements LiveSite {
   /// 通过WebRid获取直播间信息
   /// - [webRid] 直播间RID
   /// - 返回直播间信息
-  Future<LiveRoomDetail> getRoomDetailByWebRid(String webRid) async {
+  Future<LiveRoomDetail> getRoomDetailByWebRid(
+    String webRid, {
+    bool withDanmaku = true,
+  }) async {
     try {
-      var result = await _getRoomDetailByWebRidApi(webRid);
+      var result = await _getRoomDetailByWebRidApi(
+        webRid,
+        withDanmaku: withDanmaku,
+      );
       return result;
     } catch (e) {
       CoreLog.error(e);
     }
-    return await _getRoomDetailByWebRidHtml(webRid);
+    return await _getRoomDetailByWebRidHtml(
+      webRid,
+      withDanmaku: withDanmaku,
+    );
   }
 
   /// 通过WebRid访问直播间API，从API中获取直播间信息
   /// - [webRid] 直播间RID
   /// - 返回直播间信息
-  Future<LiveRoomDetail> _getRoomDetailByWebRidApi(String webRid) async {
+  Future<LiveRoomDetail> _getRoomDetailByWebRidApi(
+    String webRid, {
+    required bool withDanmaku,
+  }) async {
     // 读取房间信息
     var data = await _getRoomDataByApi(webRid);
 
@@ -355,12 +376,14 @@ class DouyinSite implements LiveSite {
       url: "https://live.douyin.com/$webRid",
       introduction: owner?["signature"]?.toString() ?? "",
       notice: "",
-      danmakuData: DouyinDanmakuArgs(
-        webRid: webRid,
-        roomId: roomId,
-        userId: userUniqueId,
-        cookie: headers["cookie"],
-      ),
+      danmakuData: withDanmaku
+          ? DouyinDanmakuArgs(
+              webRid: webRid,
+              roomId: roomId,
+              userId: userUniqueId,
+              cookie: headers["cookie"],
+            )
+          : null,
       data: roomStatus ? roomData["stream_url"] : {},
     );
   }
@@ -368,7 +391,10 @@ class DouyinSite implements LiveSite {
   /// 通过WebRid访问直播间网页，从网页HTML中获取直播间信息
   /// - [webRid] 直播间RID
   /// - 返回直播间信息
-  Future<LiveRoomDetail> _getRoomDetailByWebRidHtml(String webRid) async {
+  Future<LiveRoomDetail> _getRoomDetailByWebRidHtml(
+    String webRid, {
+    required bool withDanmaku,
+  }) async {
     var roomData = await _getRoomDataByHtml(webRid);
     var roomId = roomData["roomStore"]["roomInfo"]["room"]["id_str"].toString();
     var userUniqueId = roomData["userStore"]["odin"]["user_unique_id"]
@@ -399,12 +425,14 @@ class DouyinSite implements LiveSite {
       url: "https://live.douyin.com/$webRid",
       introduction: owner?["signature"]?.toString() ?? "",
       notice: "",
-      danmakuData: DouyinDanmakuArgs(
-        webRid: webRid,
-        roomId: roomId,
-        userId: userUniqueId,
-        cookie: headers["cookie"],
-      ),
+      danmakuData: withDanmaku
+          ? DouyinDanmakuArgs(
+              webRid: webRid,
+              roomId: roomId,
+              userId: userUniqueId,
+              cookie: headers["cookie"],
+            )
+          : null,
       data: roomStatus ? room["stream_url"] : {},
     );
   }
@@ -746,7 +774,7 @@ class DouyinSite implements LiveSite {
 
   @override
   Future<bool> getLiveStatus({required String roomId}) async {
-    var result = await getRoomDetail(roomId: roomId);
+    var result = await getRoomDetail(roomId: roomId, withDanmaku: false);
     return result.status;
   }
 

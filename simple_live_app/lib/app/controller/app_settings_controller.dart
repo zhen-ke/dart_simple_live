@@ -21,8 +21,19 @@ class AppSettingsController extends GetxController {
 
   @override
   void onInit() {
+    reload();
+    super.onInit();
+  }
+
+  /// 从本地存储重新加载全部设置。
+  ///
+  /// WebDAV 恢复、配置导入、重置之后调用，避免内存里的旧值继续
+  /// 覆盖刚写入磁盘的新值。
+  void reload() {
     themeMode.value = LocalStorageService.instance
-        .getValue(LocalStorageService.kThemeMode, 0);
+        .getValue(LocalStorageService.kThemeMode, 0)
+        .clamp(0, 2)
+        .toInt();
     firstRun = LocalStorageService.instance
         .getValue(LocalStorageService.kFirstRun, true);
     danmuSize.value = LocalStorageService.instance
@@ -89,10 +100,13 @@ class AppSettingsController extends GetxController {
     // ignore: invalid_use_of_protected_member
     shieldList.value = LocalStorageService.instance.shieldBox.values.toSet();
 
-    scaleMode.value = LocalStorageService.instance.getValue(
-      LocalStorageService.kPlayerScaleMode,
-      0,
-    );
+    scaleMode.value = LocalStorageService.instance
+        .getValue(
+          LocalStorageService.kPlayerScaleMode,
+          0,
+        )
+        .clamp(0, 4)
+        .toInt();
 
     playerVolume.value = LocalStorageService.instance.getValue(
       LocalStorageService.kPlayerVolume,
@@ -119,6 +133,8 @@ class AppSettingsController extends GetxController {
         .getValue(LocalStorageService.kLogEnable, false);
     if (logEnable.value) {
       Log.initWriter();
+    } else {
+      Log.disposeWriter();
     }
 
     customPlayerOutput.value = LocalStorageService.instance
@@ -160,8 +176,6 @@ class AppSettingsController extends GetxController {
 
     initSiteSort();
     initHomeSort();
-
-    super.onInit();
   }
 
   void initSiteSort() {
@@ -243,6 +257,15 @@ class AppSettingsController extends GetxController {
 
     LocalStorageService.instance.setValue(LocalStorageService.kThemeMode, i);
     Get.changeThemeMode(mode);
+  }
+
+  /// 将 reload 后的主题设置立即应用到运行中的 App。
+  /// 恢复备份/导入配置后调用；冷启动时 GetMaterialApp 会自己读取。
+  void applyTheme() {
+    Get.changeThemeMode(
+      ThemeMode.values[themeMode.value.clamp(0, 2).toInt()],
+    );
+    Get.forceAppUpdate();
   }
 
   var hardwareDecode = true.obs;

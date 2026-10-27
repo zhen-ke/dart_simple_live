@@ -161,7 +161,7 @@ class OtherSettingsController extends BaseController {
         "platform": Platform.operatingSystem,
         "version": 1,
         "time": DateTime.now().millisecondsSinceEpoch,
-        "config": LocalStorageService.instance.settingsBox.toMap(),
+        "config": LocalStorageService.instance.exportableSettings(),
         "shield": LocalStorageService.instance.shieldBox.toMap(),
       };
 
@@ -214,12 +214,15 @@ class OtherSettingsController extends BaseController {
           !await Utils.showAlertDialog("导入配置文件平台不匹配,是否继续导入?", title: "平台不匹配")) {
         return;
       }
-      LocalStorageService.instance.settingsBox.clear();
-      LocalStorageService.instance.shieldBox.clear();
-      LocalStorageService.instance.settingsBox.putAll(data["config"]);
-      LocalStorageService.instance.shieldBox
-          .putAll(data["shield"].cast<String, String>());
-      SmartDialog.showToast("导入成功,重启生效");
+      await LocalStorageService.instance.restoreSettings(
+        Map<String, dynamic>.from(data["config"] as Map),
+      );
+      await LocalStorageService.instance.shieldBox.clear();
+      await LocalStorageService.instance.shieldBox
+          .putAll((data["shield"] as Map).cast<String, String>());
+      AppSettingsController.instance.reload();
+      AppSettingsController.instance.applyTheme();
+      SmartDialog.showToast("导入成功");
     } catch (e) {
       Log.logPrint(e);
       SmartDialog.showToast("导入失败:$e");
@@ -227,11 +230,14 @@ class OtherSettingsController extends BaseController {
   }
 
   void resetDefaultConfig() {
-    Utils.showAlertDialog("是否重置所有配置为默认值?").then((value) {
+    Utils.showAlertDialog("是否重置所有配置为默认值?").then((value) async {
       if (value) {
-        LocalStorageService.instance.settingsBox.clear();
-        LocalStorageService.instance.shieldBox.clear();
-        SmartDialog.showToast("重置成功,重启生效");
+        // 保留本机会话/设备凭据，只重置可迁移的偏好设置。
+        await LocalStorageService.instance.restoreSettings(<String, dynamic>{});
+        await LocalStorageService.instance.shieldBox.clear();
+        AppSettingsController.instance.reload();
+        AppSettingsController.instance.applyTheme();
+        SmartDialog.showToast("已重置");
       }
     });
   }

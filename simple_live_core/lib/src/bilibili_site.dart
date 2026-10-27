@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
 import 'package:simple_live_core/src/common/convert_helper.dart';
+import 'package:simple_live_core/src/common/core_log.dart';
 import 'package:simple_live_core/src/common/http_client.dart';
 import 'package:simple_live_core/src/danmaku/bilibili_danmaku.dart';
 import 'package:simple_live_core/src/interface/live_danmaku.dart';
@@ -328,7 +329,10 @@ class BiliBiliSite implements LiveSite {
   }
 
   @override
-  Future<LiveRoomDetail> getRoomDetail({required String roomId}) async {
+  Future<LiveRoomDetail> getRoomDetail({
+    required String roomId,
+    bool withDanmaku = true,
+  }) async {
     var roomInfo = await getRoomInfo(roomId: roomId);
     var realRoomId = roomInfo["room_info"]["room_id"].toString();
 
@@ -348,33 +352,42 @@ class BiliBiliSite implements LiveSite {
       url: "https://live.bilibili.com/$roomId",
       introduction: roomInfo["room_info"]["description"].toString(),
       notice: "",
-      // 弹幕参数异步解析：详情先返回，视频取流不等弹幕接口；
-      // 弹幕参数失败仅弹幕不可用，由 BiliBiliDanmaku.start 等待结果
-      danmakuData: _prepareDanmakuArgs(realRoomId),
+      // 弹幕参数按需解析：详情先返回，视频取流不等弹幕接口；
+      // 只做关注状态/开播时间等轻量查询时完全不发这个请求。
+      danmakuData: withDanmaku ? _prepareDanmakuArgs(realRoomId) : null,
       showTime: liveStartTime, // 将 liveStartTime 赋值给 showTime 字段
     );
   }
 
   /// 弹幕参数解析：getRoomDetail 返回后立即在后台发起，
-  /// getDanmuInfo 的耗时与失败不再阻塞房间详情返回
-  Future<BiliBiliDanmakuArgs> _prepareDanmakuArgs(String realRoomId) async {
-    const danmuInfoBaseUrl =
-        "https://api.live.bilibili.com/xlive/web-room/v1/index/getDanmuInfo";
-    var danmuInfoUrl = "$danmuInfoBaseUrl?id=$realRoomId";
-    var roomDanmakuResult = await _getWbiSignedJson(danmuInfoUrl);
-    List<String> serverHosts = (roomDanmakuResult["data"]["host_list"] as List)
-        .map<String>((e) => e["host"].toString())
-        .toList();
-    return BiliBiliDanmakuArgs(
-      roomId: int.tryParse(realRoomId) ?? 0,
-      uid: userId,
-      token: roomDanmakuResult["data"]["token"].toString(),
-      serverHost: serverHosts.isNotEmpty
-          ? serverHosts.first
-          : "broadcastlv.chat.bilibili.com",
-      buvid: buvid3,
-      cookie: cookie,
-    );
+  /// getDanmuInfo 的耗时与失败不再阻塞房间详情返回。
+  ///
+  /// 失败时返回 null 而不是把错误留在无人监听的 Future 里：
+  /// 关注列表、状态核实等调用方根本不会 await 这个值。
+  Future<BiliBiliDanmakuArgs?> _prepareDanmakuArgs(String realRoomId) async {
+    try {
+      const danmuInfoBaseUrl =
+          "https://api.live.bilibili.com/xlive/web-room/v1/index/getDanmuInfo";
+      var danmuInfoUrl = "$danmuInfoBaseUrl?id=$realRoomId";
+      var roomDanmakuResult = await _getWbiSignedJson(danmuInfoUrl);
+      List<String> serverHosts =
+          (roomDanmakuResult["data"]["host_list"] as List)
+              .map<String>((e) => e["host"].toString())
+              .toList();
+      return BiliBiliDanmakuArgs(
+        roomId: int.tryParse(realRoomId) ?? 0,
+        uid: userId,
+        token: roomDanmakuResult["data"]["token"].toString(),
+        serverHost: serverHosts.isNotEmpty
+            ? serverHosts.first
+            : "broadcastlv.chat.bilibili.com",
+        buvid: buvid3,
+        cookie: cookie,
+      );
+    } catch (e, stackTrace) {
+      CoreLog.e("获取哔哩哔哩弹幕参数失败：$e", stackTrace);
+      return null;
+    }
   }
 
   Future<Map<String, dynamic>> getRoomInfo({required String roomId}) async {

@@ -61,7 +61,10 @@ class ParseController extends GetxController {
     Site site = result.site;
     try {
       SmartDialog.showLoading(msg: "");
-      var detail = await site.liveSite.getRoomDetail(roomId: result.roomId);
+      var detail = await site.liveSite.getRoomDetail(
+        roomId: result.roomId,
+        withDanmaku: false,
+      );
       var qualites = await site.liveSite.getPlayQualites(detail: detail);
       SmartDialog.dismiss(status: SmartStatus.loading);
       if (qualites.isEmpty) {

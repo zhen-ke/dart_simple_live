@@ -353,7 +353,10 @@ class HuyaSite implements LiveSite {
   }
 
   @override
-  Future<LiveRoomDetail> getRoomDetail({required String roomId}) async {
+  Future<LiveRoomDetail> getRoomDetail({
+    required String roomId,
+    bool withDanmaku = true,
+  }) async {
     var roomInfo = await _getRoomInfo(roomId);
     var tLiveInfo = roomInfo["roomInfo"]["tLiveInfo"];
     var tProfileInfo = roomInfo["roomInfo"]["tProfileInfo"];
@@ -413,11 +416,13 @@ class HuyaSite implements LiveSite {
         bitRates: huyaBiterates,
         uid: getUid(t: 13, e: 10),
       ),
-      danmakuData: HuyaDanmakuArgs(
-        ayyuid: tLiveInfo["lYyid"] ?? 0,
-        topSid: topSid ?? 0,
-        subSid: subSid ?? 0,
-      ),
+      danmakuData: withDanmaku
+          ? HuyaDanmakuArgs(
+              ayyuid: tLiveInfo["lYyid"] ?? 0,
+              topSid: topSid ?? 0,
+              subSid: subSid ?? 0,
+            )
+          : null,
       url: "https://www.huya.com/$roomId",
     );
   }

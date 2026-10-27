@@ -139,6 +139,9 @@ class LocalStorageService extends GetxService {
   /// 开启多线程更新关注
   static const String kUpdateFollowThreadCount = "UpdateFollowThreadCount";
 
+  /// 日志中必须脱敏的键。
+  static const Set<String> sensitiveKeys = {kBilibiliCookie, kDouyuCookie};
+
   late Box settingsBox;
   late Box<String> shieldBox;
 
@@ -154,7 +157,11 @@ class LocalStorageService extends GetxService {
   T getValue<T>(dynamic key, T defaultValue) {
     try {
       var value = settingsBox.get(key, defaultValue: defaultValue) as T;
-      Log.d("Get LocalStorage：$key\r\n$value");
+      if (sensitiveKeys.contains(key)) {
+        Log.d("Get LocalStorage：$key [redacted]");
+      } else {
+        Log.d("Get LocalStorage：$key\r\n$value");
+      }
       return value;
     } catch (e) {
       Log.logPrint(e);
@@ -168,7 +175,11 @@ class LocalStorageService extends GetxService {
   /// 也没有可恢复的失败路径。返回 Future 只会制造"可以等待"的错觉，
   /// 因此签名就是 void，内部显式 unawaited 表达忽略意图。
   void setValue<T>(dynamic key, T value) {
-    Log.d("Set LocalStorage：$key\r\n$value");
+    if (sensitiveKeys.contains(key)) {
+      Log.d("Set LocalStorage：$key [redacted]");
+    } else {
+      Log.d("Set LocalStorage：$key\r\n$value");
+    }
     unawaited(settingsBox.put(key, value));
   }
 }

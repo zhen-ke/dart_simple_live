@@ -934,7 +934,10 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     try {
       // 直接拉详情：一次请求同时得到开播状态与刷新流信息
       // 所需的全部数据，避免"状态查询+详情刷新"两次全量请求
-      freshDetail = await site.liveSite.getRoomDetail(roomId: roomId);
+      freshDetail = await site.liveSite.getRoomDetail(
+        roomId: roomId,
+        withDanmaku: false,
+      );
       stillLive = freshDetail.status || freshDetail.isRecord;
     } catch (_) {
       // 详情拉取失败时退化为轻量状态查询
@@ -1031,8 +1034,11 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
   Future<bool> _refreshStreamInfo(int gen,
       {LiveRoomDetail? prefetched}) async {
     try {
-      final freshDetail =
-          prefetched ?? await site.liveSite.getRoomDetail(roomId: roomId);
+      final freshDetail = prefetched ??
+          await site.liveSite.getRoomDetail(
+            roomId: roomId,
+            withDanmaku: false,
+          );
       if (!_sessionAlive(gen)) return false;
       detail.value = freshDetail;
       if (!(freshDetail.status || freshDetail.isRecord)) {

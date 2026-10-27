@@ -275,7 +275,10 @@ class FollowService extends GetxService {
       // 仅在需要显示开播时间的平台请求详情，避免重复/无效请求拖慢刷新。
       if (isLiving && _shouldLoadLiveDetail(item.siteId)) {
         try {
-          var detail = await site.liveSite.getRoomDetail(roomId: item.roomId);
+          var detail = await site.liveSite.getRoomDetail(
+            roomId: item.roomId,
+            withDanmaku: false,
+          );
           item.liveStartTime = detail.showTime;
         } catch (e) {
           Log.logPrint(e);

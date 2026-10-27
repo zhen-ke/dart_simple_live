@@ -458,7 +458,10 @@ class DouyuSite implements LiveSite {
   }
 
   @override
-  Future<LiveRoomDetail> getRoomDetail({required String roomId}) async {
+  Future<LiveRoomDetail> getRoomDetail({
+    required String roomId,
+    bool withDanmaku = true,
+  }) async {
     // 三个请求互不依赖，并行发起：
     // 房间详情 / 开播时间(h5room) / 播放签名(homeH5Enc+JS签名)
     // 签名与 warmPlayArgs 共用 _freshArgsCache：进房预热完成后
@@ -496,7 +499,7 @@ class DouyuSite implements LiveSite {
       introduction: roomInfo["show_details"].toString(),
       notice: "",
       status: roomInfo["show_status"] == 1 && roomInfo["videoLoop"] != 1,
-      danmakuData: roomInfo["room_id"].toString(),
+      danmakuData: withDanmaku ? roomInfo["room_id"].toString() : null,
       data: playArgs,
       url: "https://www.douyu.com/$roomId",
       isRecord: roomInfo["videoLoop"] == 1,

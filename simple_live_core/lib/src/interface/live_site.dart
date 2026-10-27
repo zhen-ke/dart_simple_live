@@ -52,7 +52,14 @@ class LiveSite {
   }
 
   /// 读取房间详情
-  Future<LiveRoomDetail> getRoomDetail({required String roomId}) {
+  ///
+  /// [withDanmaku] 为 false 时不解析弹幕连接参数。关注列表、状态核实、
+  /// 只取播放地址等场景应传 false：它们不需要弹幕，也不应该为一个
+  /// 用不到的 Future 付网络/异常处理成本。
+  Future<LiveRoomDetail> getRoomDetail({
+    required String roomId,
+    bool withDanmaku = true,
+  }) {
     return Future.value(LiveRoomDetail(
       cover: '',
       online: 0,

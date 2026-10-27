@@ -184,7 +184,9 @@ class RemoteSyncWebDAVController extends BaseController {
         'data': {'cookie': BiliBiliAccountService.instance.cookie},
       },
       _userSettingsJsonName: {
-        'data': LocalStorageService.instance.settingsBox.toMap(),
+        // 只备份可跨设备迁移的偏好；账号会话、WebDAV 凭据、
+        // 设备号属于本机状态，不能跟着备份走。
+        'data': LocalStorageService.instance.exportableSettings(),
       },
     };
     try {
@@ -271,8 +273,13 @@ class RemoteSyncWebDAVController extends BaseController {
         }
       } else if (file.name == _userSettingsJsonName) {
         try {
-          await LocalStorageService.instance.settingsBox.clear();
-          LocalStorageService.instance.settingsBox.putAll(jsonData);
+          await LocalStorageService.instance.restoreSettings(
+            Map<String, dynamic>.from(jsonData as Map),
+          );
+          // 恢复后立即把内存中的设置同步到刚写入的值，
+          // 否则界面仍显示旧设置，下一次写入还会把旧值写回去。
+          AppSettingsController.instance.reload();
+          AppSettingsController.instance.applyTheme();
           Log.i('已同步用户设置');
         } catch (e) {
           Log.e("同步用户设置失败：$e", StackTrace.current);

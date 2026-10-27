@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -25,6 +26,8 @@ class SyncService extends GetxService {
   static SyncService get instance => Get.find<SyncService>();
 
   UDP? udp;
+  StreamSubscription<Datagram?>? _udpSubscription;
+  Future<void>? _udpStartTask;
   static const int udpPort = 23235;
   static const int httpPort = 23234;
   DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
@@ -34,6 +37,8 @@ class SyncService extends GetxService {
   var ipAddress = "".obs;
   var httpRunning = false.obs;
   var httpErrorMsg = "".obs;
+  var udpAvailable = false.obs;
+  var udpErrorMsg = "".obs;
 
   var deviceId = "";
 
@@ -49,68 +54,114 @@ class SyncService extends GetxService {
     Log.d('SyncService init');
     deviceId = (const Uuid().v4()).split('-').first;
     // HTTP 服务改为进入同步页时按需启动，不再应用启动即监听；
-    // UDP 常驻监听，但仅在 httpRunning 时才会回应发现广播
-    listenUDP();
+    // UDP 常驻监听，但仅在 httpRunning 时才会回应发现广播。
+    // 端口被占用时只降级局域网发现，不能让未捕获异常掀掉整个 App。
+    unawaited(listenUDP());
     super.onInit();
   }
 
   /// 监听来自其他客户端的UDP广播
   /// - 如果收到广播，回复自己的信息
-  void listenUDP() async {
-    udp = await UDP.bind(Endpoint.any(port: const Port(udpPort)));
-    udp!.asStream().listen((datagram) {
-      // socket 关闭时 asStream 可能给出 null，空断言会直接崩
-      if (datagram == null) return;
-      var str = String.fromCharCodes(datagram.data);
-      Log.i("Received: $str from ${datagram.address}:${datagram.port}");
-      if (str.startsWith('{') && str.endsWith('}')) {
-        dynamic data;
-        try {
-          data = json.decode(str);
-        } catch (_) {
-          // 同网段任意主机都能往这个端口发广播，非法报文直接忽略
-          return;
-        }
-        if (data is! Map) return;
+  ///
+  /// 并发调用共享同一个绑定任务：启动时和进入同步页时可能同时触发，
+  /// 不能让后一次 bind 的失败把前一次已成功的 socket 关掉。
+  Future<void> listenUDP() {
+    if (udp != null) return Future.value();
+    final pending = _udpStartTask;
+    if (pending != null) return pending;
 
-        //处理Hello的广播
-        if (data["type"] == "hello") {
-          //如果http服务已经启动，就回复自己的信息
-          if (httpRunning.value) {
-            sendInfo();
-          }
-          return;
-        }
-      } else if (str == 'Who is SimpleLive?') {
-        //如果http服务已经启动，就回复自己的信息
-        if (httpRunning.value) {
-          sendInfo();
-        }
+    final task = _bindUdp();
+    _udpStartTask = task;
+    unawaited(task.whenComplete(() {
+      if (identical(_udpStartTask, task)) {
+        _udpStartTask = null;
       }
-    });
+    }));
+    return task;
+  }
+
+  Future<void> _bindUdp() async {
+    try {
+      final socket = await UDP.bind(Endpoint.any(port: const Port(udpPort)));
+      udp = socket;
+      _udpSubscription = socket.asStream().listen(
+        (datagram) {
+          // socket 关闭时 asStream 可能给出 null，空断言会直接崩
+          if (datagram == null) return;
+          var str = String.fromCharCodes(datagram.data);
+          Log.i("Received: $str from ${datagram.address}:${datagram.port}");
+          if (str.startsWith('{') && str.endsWith('}')) {
+            dynamic data;
+            try {
+              data = json.decode(str);
+            } catch (_) {
+              // 同网段任意主机都能往这个端口发广播，非法报文直接忽略
+              return;
+            }
+            if (data is! Map) return;
+
+            //处理Hello的广播
+            if (data["type"] == "hello") {
+              //如果http服务已经启动，就回复自己的信息
+              if (httpRunning.value) {
+                unawaited(sendInfo());
+              }
+              return;
+            }
+          } else if (str == 'Who is SimpleLive?') {
+            //如果http服务已经启动，就回复自己的信息
+            if (httpRunning.value) {
+              unawaited(sendInfo());
+            }
+          }
+        },
+        onError: (Object error, StackTrace stackTrace) {
+          _handleUdpFailure(error, stackTrace);
+        },
+      );
+      udpAvailable.value = true;
+      udpErrorMsg.value = "";
+    } catch (error, stackTrace) {
+      _handleUdpFailure(error, stackTrace);
+    }
+  }
+
+  void _handleUdpFailure(Object error, StackTrace stackTrace) {
+    udpAvailable.value = false;
+    udpErrorMsg.value = error.toString();
+    Log.e("局域网发现不可用：$error", stackTrace);
+
+    unawaited(_udpSubscription?.cancel());
+    _udpSubscription = null;
+    final socket = udp;
+    udp = null;
+    socket?.close();
   }
 
   /// 发送自己的信息
-  void sendInfo() async {
-    //var ip = await getLocalIP();
+  Future<bool> sendInfo() async {
+    final socket = udp;
+    if (socket == null) return false;
+    try {
+      final name = await getDeviceName();
+      final data = {
+        "id": deviceId,
+        "type": "tv",
+        "name": name,
+        //"address": ip,
+        //"port": httpPort,
+      };
 
-    var name = await getDeviceName();
-
-    var data = {
-      "id": deviceId,
-      "type": "tv",
-      "name": name,
-      //"address": ip,
-      //"port": httpPort,
-    };
-
-    await udp!.send(
-      json.encode(data).codeUnits,
-      Endpoint.broadcast(
-        port: const Port(udpPort),
-      ),
-    );
-    Log.i("send udp info: $data");
+      await socket.send(
+        json.encode(data).codeUnits,
+        Endpoint.broadcast(port: const Port(udpPort)),
+      );
+      Log.i("send udp info: $data");
+      return true;
+    } catch (error, stackTrace) {
+      _handleUdpFailure(error, stackTrace);
+      return false;
+    }
   }
 
   /// 读取本地IP
@@ -204,11 +255,7 @@ class SyncService extends GetxService {
       // 每次启动轮换令牌：只有先通过 /info 握手的客户端才能写入
       _syncToken = const Uuid().v4().replaceAll('-', '');
 
-      var s = await shelf_io.serve(
-        handler,
-        InternetAddress.anyIPv4,
-        httpPort,
-      );
+      var s = await shelf_io.serve(handler, InternetAddress.anyIPv4, httpPort);
 
       // 等待端口绑定期间用户可能已离开同步页：作废这次启动
       if (!_serverWanted) {
@@ -306,13 +353,8 @@ class SyncService extends GetxService {
   shelf.Response _errorResponse(String message, {int status = 400}) {
     return shelf.Response(
       status,
-      body: json.encode({
-        'status': false,
-        'message': message,
-      }),
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      body: json.encode({'status': false, 'message': message}),
+      headers: {'Content-Type': 'application/json'},
       encoding: Encoding.getByName('utf-8'),
     );
   }
@@ -320,8 +362,9 @@ class SyncService extends GetxService {
   /// 同步关注用户列表
   Future<shelf.Response> _syncFollowUserReuqest(shelf.Request request) async {
     try {
-      var overlay =
-          int.parse(request.requestedUri.queryParameters['overlay'] ?? '0');
+      var overlay = int.parse(
+        request.requestedUri.queryParameters['overlay'] ?? '0',
+      );
 
       var body = await _readLimitedBody(request);
       var jsonBody = json.decode(body);
@@ -334,23 +377,18 @@ class SyncService extends GetxService {
 
       SmartDialog.showToast('已同步关注用户列表');
       EventBus.instance.emit(Constant.kUpdateFollow, 0);
-      return toJsonResponse({
-        'status': true,
-        'message': 'success',
-      });
+      return toJsonResponse({'status': true, 'message': 'success'});
     } catch (e) {
-      return toJsonResponse({
-        'status': false,
-        'message': e.toString(),
-      });
+      return toJsonResponse({'status': false, 'message': e.toString()});
     }
   }
 
   /// 同步观看记录
   Future<shelf.Response> _syncHistoryReuqest(shelf.Request request) async {
     try {
-      var overlay =
-          int.parse(request.requestedUri.queryParameters['overlay'] ?? '0');
+      var overlay = int.parse(
+        request.requestedUri.queryParameters['overlay'] ?? '0',
+      );
       var body = await _readLimitedBody(request);
       var jsonBody = json.decode(body);
       // 先完整解析再覆盖写入：解析失败不清空本地数据
@@ -359,30 +397,22 @@ class SyncService extends GetxService {
         histories.add(History.fromJson(item));
       }
       // 先在内存里比完新旧，再一次性落盘（见 DBService.mergeHistories）
-      await DBService.instance.mergeHistories(
-        histories,
-        overlay: overlay == 1,
-      );
+      await DBService.instance.mergeHistories(histories, overlay: overlay == 1);
 
       SmartDialog.showToast('已同步观看记录');
       EventBus.instance.emit(Constant.kUpdateHistory, 0);
-      return toJsonResponse({
-        'status': true,
-        'message': 'success',
-      });
+      return toJsonResponse({'status': true, 'message': 'success'});
     } catch (e) {
-      return toJsonResponse({
-        'status': false,
-        'message': e.toString(),
-      });
+      return toJsonResponse({'status': false, 'message': e.toString()});
     }
   }
 
   /// 同步弹幕屏蔽词
   Future<shelf.Response> _syncBlockedWordReuqest(shelf.Request request) async {
     try {
-      var overlay =
-          int.parse(request.requestedUri.queryParameters['overlay'] ?? '0');
+      var overlay = int.parse(
+        request.requestedUri.queryParameters['overlay'] ?? '0',
+      );
       var body = await _readLimitedBody(request);
       var jsonBody = json.decode(body);
       if (overlay == 1) {
@@ -392,15 +422,9 @@ class SyncService extends GetxService {
         AppSettingsController.instance.addShieldList(keyword.trim());
       }
       SmartDialog.showToast('已同步弹幕屏蔽词');
-      return toJsonResponse({
-        'status': true,
-        'message': 'success',
-      });
+      return toJsonResponse({'status': true, 'message': 'success'});
     } catch (e) {
-      return toJsonResponse({
-        'status': false,
-        'message': e.toString(),
-      });
+      return toJsonResponse({'status': false, 'message': e.toString()});
     }
   }
 
@@ -413,24 +437,16 @@ class SyncService extends GetxService {
       BiliBiliAccountService.instance.setCookie(cookie);
       BiliBiliAccountService.instance.loadUserInfo();
       SmartDialog.showToast('已同步哔哩哔哩账号');
-      return toJsonResponse({
-        'status': true,
-        'message': 'success',
-      });
+      return toJsonResponse({'status': true, 'message': 'success'});
     } catch (e) {
-      return toJsonResponse({
-        'status': false,
-        'message': e.toString(),
-      });
+      return toJsonResponse({'status': false, 'message': e.toString()});
     }
   }
 
   shelf.Response toJsonResponse(Map<String, dynamic> data) {
     return shelf.Response.ok(
       json.encode(data),
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: {'Content-Type': 'application/json'},
       encoding: Encoding.getByName('utf-8'),
     );
   }
@@ -438,8 +454,12 @@ class SyncService extends GetxService {
   @override
   void onClose() {
     Log.d('SyncService close');
-    udp?.close();
-    server?.close(force: true);
+    unawaited(_udpSubscription?.cancel());
+    _udpSubscription = null;
+    final socket = udp;
+    udp = null;
+    socket?.close();
+    unawaited(server?.close(force: true));
     super.onClose();
   }
 }

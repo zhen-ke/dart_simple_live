@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:io';
+import 'dart:ui' show PlatformDispatcher;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -38,9 +40,33 @@ import 'package:window_manager/window_manager.dart';
 import 'package:path/path.dart' as p;
 import 'package:dynamic_color/dynamic_color.dart';
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+void main() {
+  runZonedGuarded(
+    () async {
+      WidgetsFlutterBinding.ensureInitialized();
 
+      FlutterError.onError = (details) {
+        FlutterError.presentError(details);
+        Log.crash(details.exception, details.stack ?? StackTrace.current);
+      };
+      PlatformDispatcher.instance.onError = (error, stack) {
+        Log.crash(error, stack);
+        return true;
+      };
+
+      try {
+        await _bootstrap();
+        runApp(const MyApp());
+      } catch (error, stack) {
+        Log.crash(error, stack);
+        runApp(BootFailureApp(error: error));
+      }
+    },
+    (error, stack) => Log.crash(error, stack),
+  );
+}
+
+Future<void> _bootstrap() async {
   // 限制图片缓存数量与内存占用（最多缓存200张或50MB），缓解因大量主播头像等引发的高内存问题
   PaintingBinding.instance.imageCache.maximumSize = 200;
   PaintingBinding.instance.imageCache.maximumSizeBytes = 50 * 1024 * 1024;
@@ -63,7 +89,6 @@ void main() async {
     systemNavigationBarColor: Colors.transparent,
   );
   SystemChrome.setSystemUIOverlayStyle(systemUiOverlayStyle);
-  runApp(const MyApp());
 }
 
 /// 将Hive数据迁移到Application Support
@@ -158,6 +183,7 @@ void initCoreLog() {
   //日志信息
   CoreLog.enableLog =
       !kReleaseMode || AppSettingsController.instance.logEnable.value;
+  Log.enabled = !kReleaseMode || AppSettingsController.instance.logEnable.value;
   CoreLog.requestLogType = RequestLogType.short;
   CoreLog.onPrintLog = (level, msg) {
     switch (level) {
@@ -177,6 +203,41 @@ void initCoreLog() {
         Log.logPrint(msg);
     }
   };
+}
+
+/// 初始化失败时的最小可用界面：至少让用户看到原因，
+/// 而不是停在无反馈的白屏。
+class BootFailureApp extends StatelessWidget {
+  const BootFailureApp({super.key, required this.error});
+
+  final Object error;
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      home: Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  "应用初始化失败",
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 12),
+                SelectableText(
+                  "$error",
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class MyApp extends StatelessWidget {

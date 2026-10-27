@@ -181,6 +181,34 @@ class LocalStorageService extends GetxService {
   /// WebDAV_最后一次备份时间
   static const String kWebDAVLastRecoverTime = "kWebDAVLastRecoverTime";
 
+  /// 日志中必须脱敏的键：账号 Cookie、WebDAV 凭据、设备身份。
+  static const Set<String> sensitiveKeys = {
+    kBilibiliCookie,
+    kDouyinCookie,
+    kDouyuCookie,
+    kDouyuDeviceId,
+    kWebDAVUri,
+    kWebDAVUser,
+    kWebDAVPassword,
+  };
+
+  /// 仅属于本机、不进入 WebDAV/配置备份的键。
+  /// 账号会话、设备身份、WebDAV 连接信息一旦跨设备复制，
+  /// 既可能造成串号，也会把凭据带进备份文件。
+  static const Set<String> localOnlyKeys = {
+    kFirstRun,
+    kLogEnable,
+    kDouyuDeviceId,
+    kBilibiliCookie,
+    kDouyinCookie,
+    kDouyuCookie,
+    kWebDAVUri,
+    kWebDAVUser,
+    kWebDAVPassword,
+    kWebDAVLastUploadTime,
+    kWebDAVLastRecoverTime,
+  };
+
   late Box settingsBox;
   late Box<String> shieldBox;
 
@@ -193,10 +221,47 @@ class LocalStorageService extends GetxService {
     );
   }
 
+  /// 可进入备份/导出的设置快照。
+  Map<String, dynamic> exportableSettings() {
+    final result = <String, dynamic>{};
+    settingsBox.toMap().forEach((key, value) {
+      if (key is String && !localOnlyKeys.contains(key)) {
+        result[key] = value;
+      }
+    });
+    return result;
+  }
+
+  /// 用备份中的设置覆盖本地，但保留 [localOnlyKeys]：
+  /// 恢复别人的备份不应该把本机 WebDAV 登录状态、设备号或账号会话一起替换掉。
+  Future<void> restoreSettings(Map<String, dynamic> data) async {
+    final localValues = <String, dynamic>{};
+    for (final key in localOnlyKeys) {
+      if (settingsBox.containsKey(key)) {
+        localValues[key] = settingsBox.get(key);
+      }
+    }
+
+    final incoming = Map<String, dynamic>.from(data)
+      ..removeWhere((key, _) => localOnlyKeys.contains(key));
+
+    await settingsBox.clear();
+    if (incoming.isNotEmpty) {
+      await settingsBox.putAll(incoming);
+    }
+    if (localValues.isNotEmpty) {
+      await settingsBox.putAll(localValues);
+    }
+  }
+
   T getValue<T>(dynamic key, T defaultValue) {
     try {
       var value = settingsBox.get(key, defaultValue: defaultValue) as T;
-      Log.d("Get LocalStorage：$key\r\n$value");
+      if (sensitiveKeys.contains(key)) {
+        Log.d("Get LocalStorage：$key [redacted]");
+      } else {
+        Log.d("Get LocalStorage：$key\r\n$value");
+      }
       return value;
     } catch (e) {
       Log.logPrint(e);
@@ -210,7 +275,11 @@ class LocalStorageService extends GetxService {
   /// 也没有可恢复的失败路径。返回 Future 只会制造"可以等待"的错觉，
   /// 因此签名就是 void，内部显式 unawaited 表达忽略意图。
   void setValue<T>(dynamic key, T value) {
-    Log.d("Set LocalStorage：$key\r\n$value");
+    if (sensitiveKeys.contains(key)) {
+      Log.d("Set LocalStorage：$key [redacted]");
+    } else {
+      Log.d("Set LocalStorage：$key\r\n$value");
+    }
     unawaited(settingsBox.put(key, value));
   }
 }

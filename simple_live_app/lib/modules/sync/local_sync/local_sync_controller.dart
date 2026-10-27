@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -22,9 +23,16 @@ class LocalSyncController extends BaseController {
   void onInit() {
     // 进入同步页才启动HTTP服务；离开页面即停止监听
     SyncService.instance.startServer();
-    SyncService.instance.refreshClients();
+    unawaited(_startDiscovery());
     Future.delayed(Duration.zero, initConnect);
     super.onInit();
+  }
+
+  Future<void> _startDiscovery() async {
+    // 启动时若 UDP 端口被短暂占用，这里再尝试一次绑定；
+    // 绑定完成后再广播，避免 hello 发在 socket 就绪之前。
+    await SyncService.instance.listenUDP();
+    SyncService.instance.refreshClients();
   }
 
   @override
@@ -154,6 +162,16 @@ class LocalSyncController extends BaseController {
               textAlign: TextAlign.center,
             ),
           ),
+          if (!SyncService.instance.udpAvailable.value &&
+              SyncService.instance.udpErrorMsg.value.isNotEmpty)
+            Padding(
+              padding: AppStyle.edgeInsetsT12,
+              child: Text(
+                '局域网发现不可用：${SyncService.instance.udpErrorMsg.value}',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 12, color: Colors.orange),
+              ),
+            ),
           AppStyle.vGap12,
           Visibility(
             visible: SyncService.instance.httpRunning.value,

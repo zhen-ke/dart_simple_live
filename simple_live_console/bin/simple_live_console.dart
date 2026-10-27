@@ -42,7 +42,7 @@ Future printInfo(String url) async {
   var urlInfo = parseUrl(url);
   LiveSite site = urlInfo.first;
   var id = urlInfo.last;
-  var detail = await site.getRoomDetail(roomId: id);
+  var detail = await site.getRoomDetail(roomId: id, withDanmaku: false);
   print("来源：${site.name}");
   print("房间号：${detail.roomId}");
   print("房间标题：${detail.title}");

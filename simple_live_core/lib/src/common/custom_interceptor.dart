@@ -3,17 +3,31 @@ import 'package:dio/dio.dart';
 import 'core_log.dart';
 
 class CustomInterceptor extends Interceptor {
+  /// 日志脱敏：Cookie / Authorization / Set-Cookie 不能落盘或进控制台。
+  String _maskHeaders(Map<dynamic, dynamic> headers) {
+    final masked = <dynamic, dynamic>{};
+    headers.forEach((key, value) {
+      final lower = key.toString().toLowerCase();
+      if (lower == 'cookie' ||
+          lower == 'set-cookie' ||
+          lower == 'authorization') {
+        masked[key] = '******';
+      } else {
+        masked[key] = value;
+      }
+    });
+    return masked.toString();
+  }
+
   @override
   void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
     options.extra["ts"] = DateTime.now().millisecondsSinceEpoch;
     if (CoreLog.requestLogType == RequestLogType.all) {
-      CoreLog.i(
-        '''[HTTP Request] [${options.method}]
+      CoreLog.i('''[HTTP Request] [${options.method}]
 Request URL：${options.uri}
 Request Query：${options.queryParameters}
 Request Data：${options.data}
-Request Headers：${options.headers}''',
-      );
+Request Headers：${_maskHeaders(options.headers)}''');
     } else if (CoreLog.requestLogType == RequestLogType.short) {
       CoreLog.i("[HTTP Request] [${options.method}] ${options.uri}");
     }
@@ -34,8 +48,8 @@ Response Code：${err.response?.statusCode}
 Request URL：${err.requestOptions.uri}
 Request Query：${err.requestOptions.queryParameters}
 Request Data：${err.requestOptions.data}
-Request Headers：${err.requestOptions.headers}
-Response Headers：${err.response?.headers.map}
+Request Headers：${_maskHeaders(err.requestOptions.headers)}
+Response Headers：${_maskHeaders(err.response?.headers.map ?? const {})}
 Response Data：${err.response?.data}''', err.stackTrace);
     } else {
       CoreLog.e(
@@ -49,20 +63,19 @@ Response Data：${err.response?.data}''', err.stackTrace);
 
   @override
   void onResponse(Response response, ResponseInterceptorHandler handler) {
-    var time = DateTime.now().millisecondsSinceEpoch -
+    var time =
+        DateTime.now().millisecondsSinceEpoch -
         response.requestOptions.extra["ts"];
     if (CoreLog.requestLogType == RequestLogType.all) {
-      CoreLog.i(
-        '''[HTTP Response] [time:${time}ms]
+      CoreLog.i('''[HTTP Response] [time:${time}ms]
 Request Method：${response.requestOptions.method}
 Request Code：${response.statusCode}
 Request URL：${response.requestOptions.uri}
 Request Query：${response.requestOptions.queryParameters}
 Request Data：${response.requestOptions.data}
-Request Headers：${response.requestOptions.headers}
-Response Headers：${response.headers.map}
-Response Data：${response.data}''',
-      );
+Request Headers：${_maskHeaders(response.requestOptions.headers)}
+Response Headers：${_maskHeaders(response.headers.map)}
+Response Data：${response.data}''');
     } else if (CoreLog.requestLogType == RequestLogType.short) {
       CoreLog.i(
         "[HTTP Response] [time:${time}ms] [${response.statusCode}] ${response.requestOptions.uri}",

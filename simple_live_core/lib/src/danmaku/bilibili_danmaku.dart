@@ -59,10 +59,23 @@ class BiliBiliDanmaku with DanmakuConnection implements LiveDanmaku {
     // danmakuData 允许传入在途 Future：详情先返回让视频起播，
     // 弹幕参数并行解析，连接前等待其就绪
     if (args is Future) {
-      args = await args;
+      try {
+        args = await args;
+      } catch (e, stackTrace) {
+        CoreLog.e("等待哔哩哔哩弹幕参数失败：$e", stackTrace);
+        if (startGeneration == _startGeneration) {
+          onClose?.call("弹幕参数获取失败");
+        }
+        return;
+      }
     }
     if (startGeneration != _startGeneration) return;
-    danmakuArgs = args as BiliBiliDanmakuArgs;
+    if (args is! BiliBiliDanmakuArgs) {
+      // 参数解析失败时不要把它伪装成"连接中"：明确告诉上层弹幕不可用
+      onClose?.call("弹幕参数获取失败");
+      return;
+    }
+    danmakuArgs = args;
     replaceConnection(WebScoketUtils(
       url: "wss://${args.serverHost}/sub",
       heartBeatTime: heartbeatTime,

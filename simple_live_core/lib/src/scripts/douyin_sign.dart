@@ -1,7 +1,9 @@
+import 'dart:convert';
 import 'dart:math';
-import 'package:dart_quickjs/dart_quickjs.dart';
-import 'package:simple_live_core/simple_live_core.dart';
+
 import 'package:crypto/crypto.dart';
+import 'package:simple_live_core/simple_live_core.dart';
+import 'package:simple_live_core/src/common/quickjs_runtime_host.dart';
 
 class DouyinSign {
   static const kABogus = r'''
@@ -10648,43 +10650,54 @@ function getMSSDKSignature(msStub, userAgent) {
 ''';
 
   static const String defaultUserAgent = DouyinSite.kDefaultUserAgent;
+
+  /// ABogus 与 MSSDK 各自一个常驻运行时：两段脚本体积差异大，
+  /// 分开缓存可以避免一次失败连带清掉另一段已经编译好的上下文。
+  static final QuickJsRuntimeHost _abogusRuntime = QuickJsRuntimeHost(
+    name: 'douyin-abogus',
+    bootstrap: kABogus,
+  );
+
+  static final QuickJsRuntimeHost _msSdkRuntime = QuickJsRuntimeHost(
+    name: 'douyin-ms-sdk',
+    bootstrap: kWebMsSDK,
+    maxStackSize: 128 * 1024,
+  );
+
+  static String _evalString(QuickJsRuntimeHost host, String script) {
+    final value = host.run((runtime) => runtime.eval(script));
+    return value?.toString() ?? '';
+  }
+
   static String getAbogusUrl(String url, String userAgent) {
-    JsRuntime flutterJs = JsRuntime(
-      memoryLimit: 4 * 1024 * 1024,
-      maxStackSize: 64 * 1024,
-    );
     final msToken = generateMsToken(107);
-    var params = ('$url&msToken=$msToken').split('?')[1];
-    var query = params.contains("?") ? params.split("?")[1] : params;
-    var jsCode = kABogus;
-    flutterJs.eval(jsCode);
-    // 执行getABogus函数
-    var aBogus = flutterJs.eval("getABogus('$query', '$userAgent')");
-    flutterJs.dispose();
-    var newUrl =
-        '$url&msToken=${Uri.encodeComponent(msToken)}&a_bogus=${Uri.encodeComponent(aBogus)}';
-    return newUrl;
+    final parts = ('$url&msToken=$msToken').split('?');
+    final params = parts.length > 1 ? parts[1] : '';
+    final query = params.contains("?") ? params.split("?")[1] : params;
+    // 用 JSON 字符串字面量传参：query/userAgent 里的引号、反斜杠
+    // 不会再破坏 JS 语法，也不需要手写转义。
+    final aBogus = _evalString(
+      _abogusRuntime,
+      'getABogus(${jsonEncode(query)}, ${jsonEncode(userAgent)})',
+    );
+    return '$url&msToken=${Uri.encodeComponent(msToken)}&a_bogus=${Uri.encodeComponent(aBogus)}';
   }
 
   static String getSignature(String roomId, String uniqueId) {
-    JsRuntime flutterJs = JsRuntime(
-      memoryLimit: 4 * 1024 * 1024,
-      maxStackSize: 128 * 1024,
-    );
+    final msStub = getMsStub(roomId, uniqueId);
+    final script =
+        'getMSSDKSignature(${jsonEncode(msStub)}, ${jsonEncode(defaultUserAgent)})';
 
-    flutterJs.eval(kWebMsSDK);
-    var msStub = getMsStub(roomId, uniqueId);
-    var signature = flutterJs.eval(
-      "getMSSDKSignature('$msStub','$defaultUserAgent')",
-    );
-    // 如果signature中包含-或=，重新生成
-    while (signature.contains('-') || signature.contains('=')) {
-      signature = flutterJs.eval(
-        "getMSSDKSignature('$msStub','$defaultUserAgent')",
-      );
+    var signature = _evalString(_msSdkRuntime, script);
+    // 签名里出现 - 或 = 会被部分网关/查询解析器截断；重试有上限，
+    // 避免服务端持续返回同类值时死循环。
+    for (var attempt = 0; attempt < 10; attempt++) {
+      if (!signature.contains('-') && !signature.contains('=')) {
+        return signature;
+      }
+      signature = _evalString(_msSdkRuntime, script);
     }
-    flutterJs.dispose();
-    return signature;
+    throw StateError('抖音签名生成失败：连续 10 次包含非法字符');
   }
 
   static String getMsStub(String roomId, String uniqueId) {
