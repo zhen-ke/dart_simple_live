@@ -34,10 +34,12 @@ class PageListView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Obx(
-      () => Stack(
-        children: [
-          EasyRefresh(
+    // 按订阅粒度拆分 Obx：数据列表只依赖 list，加载状态只依赖各状态位。
+    // 任何一处变化只重建自己的小分支，不再整棵 EasyRefresh + 列表重建
+    return Stack(
+      children: [
+        Obx(
+          () => EasyRefresh(
             header: MaterialHeader(
               completeDuration: const Duration(milliseconds: 400),
             ),
@@ -57,12 +59,14 @@ class PageListView extends StatelessWidget {
                   separatorBuilder ?? (context, i) => const SizedBox(),
             ),
           ),
-          Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            child: // 加载更多按钮
-                Visibility(
+        ),
+        Positioned(
+          bottom: 0,
+          left: 0,
+          right: 0,
+          child: // 加载更多按钮
+              Obx(
+            () => Visibility(
               visible: (Platform.isWindows ||
                       Platform.isLinux ||
                       Platform.isMacOS) &&
@@ -77,11 +81,13 @@ class PageListView extends StatelessWidget {
               ),
             ),
           ),
-          Positioned(
-            bottom: 12,
-            right: 12,
-            child: // 加载更多按钮
-                Visibility(
+        ),
+        Positioned(
+          bottom: 12,
+          right: 12,
+          child: // 加载更多按钮
+              Obx(
+            () => Visibility(
               visible: (Platform.isWindows ||
                       Platform.isLinux ||
                       Platform.isMacOS) &&
@@ -103,25 +109,31 @@ class PageListView extends StatelessWidget {
               ),
             ),
           ),
-          Offstage(
+        ),
+        Obx(
+          () => Offstage(
             offstage: !pageController.pageEmpty.value,
             child: AppEmptyWidget(
               onRefresh: () => pageController.refreshData(),
             ),
           ),
-          Offstage(
+        ),
+        Obx(
+          () => Offstage(
             offstage: !(showPageLoadding && pageController.pageLoadding.value),
             child: const AppLoaddingWidget(),
           ),
-          Offstage(
+        ),
+        Obx(
+          () => Offstage(
             offstage: !pageController.pageError.value,
             child: AppErrorWidget(
               errorMsg: pageController.errorMsg.value,
               onRefresh: () => pageController.refreshData(),
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

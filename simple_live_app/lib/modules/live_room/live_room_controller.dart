@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:extended_image/extended_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
@@ -630,7 +629,11 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
       error = e;
       errorStackTrace = s;
     } finally {
-      SmartDialog.dismiss(status: SmartStatus.loading);
+      // loading 遮罩属于最新一次 loadData：旧会话不能把新会话刚弹出的
+      // 遮罩提前关掉；页面已关闭（无新会话接管）时仍由旧会话负责关掉
+      if (gen == _sessionGen || _roomClosed) {
+        SmartDialog.dismiss(status: SmartStatus.loading);
+      }
     }
   }
 
@@ -647,7 +650,10 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
       _qualitesMs = _loadStopwatch.elapsedMilliseconds;
 
       if (playQualites.isEmpty) {
-        SmartDialog.showToast("无法读取播放清晰度");
+        // 快速切房后旧会话的提示不再打扰新房间
+        if (_sessionAlive(gen)) {
+          SmartDialog.showToast("无法读取播放清晰度");
+        }
         return;
       }
       // 画质列表整体替换，在飞的取流请求作废
@@ -670,7 +676,9 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
       unawaited(getPlayUrl());
     } catch (e) {
       Log.logPrint(e);
-      SmartDialog.showToast("无法读取播放清晰度");
+      if (_sessionAlive(gen)) {
+        SmartDialog.showToast("无法读取播放清晰度");
+      }
     }
   }
 
@@ -1075,11 +1083,15 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
 
   /// 读取SC
   void getSuperChatMessage() async {
+    // 快照会话代次：快速切房时旧房间的 SC 响应不得写进新房间
+    final gen = _sessionGen;
     try {
       var sc =
           await site.liveSite.getSuperChatMessage(roomId: detail.value!.roomId);
+      if (!_sessionAlive(gen)) return;
       superChats.addAll(sc);
     } catch (e) {
+      if (!_sessionAlive(gen)) return;
       Log.logPrint(e);
       addSysMsg("SC读取失败");
     }
@@ -1354,7 +1366,8 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
       keywordController.text = "";
     }
 
-    Utils.showBottomSheet(
+    // 弹窗关闭后立即释放输入框 controller，不留在内存里
+    final sheetClosed = Utils.showBottomSheet(
       title: "关键词屏蔽",
       child: ListView(
         padding: AppStyle.edgeInsetsA12,
@@ -1416,6 +1429,7 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
         ],
       ),
     );
+    unawaited(sheetClosed.whenComplete(keywordController.dispose));
   }
 
   void showFollowUserSheet() {
@@ -1672,7 +1686,9 @@ ${errorStackTrace ?? (error is Error ? (error as Error).stackTrace : "")}''');
     _liveDurationTimer?.cancel(); // 页面关闭时取消定时器
     _scPruneTimer?.cancel();
     _stablePlayTimer?.cancel();
-    clearMemoryImageCache();
+    // 不清空全局图片内存缓存：main.dart 的 LRU 上限（200张/50MB）已控住
+    // 总量，而房间的头像/SC 图片 URL 与首页、关注、历史列表共用同一份
+    // 缓存键，全局清空会让返回列表时所有封面头像重新走网络与解码
     super.onClose();
   }
 }

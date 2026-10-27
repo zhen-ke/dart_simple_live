@@ -71,14 +71,25 @@ Future<void> _bootstrap() async {
   PaintingBinding.instance.imageCache.maximumSize = 200;
   PaintingBinding.instance.imageCache.maximumSizeBytes = 50 * 1024 * 1024;
 
-  await migrateData();
-  await initWindow();
   MediaKit.ensureInitialized();
+
+  // 窗口初始化、包信息读取与数据迁移互不依赖：并行执行，
+  // 冷启动不必串行等完三个平台调用
+  final windowReady = initWindow();
+  final packageInfoReady =
+      PackageInfo.fromPlatform().then((info) => Utils.packageInfo = info);
+
+  // 迁移必须在 Hive 打开任何 box 之前完成：
+  // 桌面端要把旧目录的 hive 文件搬进 Application Support
+  await migrateData();
   await Hive.initFlutter(
     (!Platform.isAndroid && !Platform.isIOS)
         ? (await getApplicationSupportDirectory()).path
         : null,
   );
+
+  // 包信息就绪是服务初始化的前置条件（设置控制器等会读取版本号）
+  await Future.wait([windowReady, packageInfoReady]);
   //初始化服务
   await initServices();
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
@@ -154,12 +165,14 @@ Future initServices() async {
   Hive.registerAdapter(HistoryAdapter());
   Hive.registerAdapter(FollowUserTagAdapter());
 
-  //包信息
-  Utils.packageInfo = await PackageInfo.fromPlatform();
-  //本地存储
+  //包信息已由 _bootstrap 与数据迁移并行预取
+  //本地存储与数据库互不依赖：两组 Hive box 并行打开，
+  //不再让 6 次 box 打开排成一条串行磁盘 IO 链
   Log.d("Init LocalStorage Service");
-  await Get.put(LocalStorageService()).init();
-  await Get.put(DBService()).init();
+  await Future.wait([
+    Get.put(LocalStorageService()).init(),
+    Get.put(DBService()).init(),
+  ]);
   //初始化设置控制器
   Get.put(AppSettingsController());
 

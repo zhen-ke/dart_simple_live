@@ -34,6 +34,7 @@ class BiliBiliSite implements LiveSite {
       _cookie = value;
       _invalidateWbiKeys();
       accessId = '';
+      _accessIdTask = null;
     }
   }
 
@@ -49,9 +50,17 @@ class BiliBiliSite implements LiveSite {
   String buvid3 = "";
   String buvid4 = "";
   String accessId = "";
+
+  /// 并发首跳共享同一次 buvid 拉取，避免同时进多个房间时重复请求
+  Future<Map>? _buvidTask;
+
+  /// 并发取流/签名共享同一次 access_id 拉取
+  Future<String>? _accessIdTask;
+
   Future<Map<String, String>> getHeader() async {
     if (buvid3.isEmpty) {
-      var buvidInfo = await getBuvid();
+      var buvidInfo = await (_buvidTask ??=
+          getBuvid().whenComplete(() => _buvidTask = null));
       buvid3 = buvidInfo["b_3"] ?? "";
       buvid4 = buvidInfo["b_4"] ?? "";
     }
@@ -398,6 +407,16 @@ class BiliBiliSite implements LiveSite {
   }
 
   @override
+  Future<String?> getRoomShowTime({required String roomId}) async {
+    try {
+      var roomInfo = await getRoomInfo(roomId: roomId);
+      return roomInfo["room_info"]?["live_start_time"]?.toString();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
   Future<LiveSearchRoomResult> searchRooms(String keyword,
       {int page = 1}) async {
     var result = await HttpClient.instance.getJson(
@@ -719,11 +738,17 @@ class BiliBiliSite implements LiveSite {
     return queryParams;
   }
 
-  Future<String> getAccessId() async {
+  Future<String> getAccessId() {
     if (accessId.isNotEmpty) {
-      return accessId;
+      return Future.value(accessId);
     }
+    // 并发分类请求共享同一次 access_id 拉取
+    return _accessIdTask ??=
+        _fetchAccessId().whenComplete(() => _accessIdTask = null);
+  }
 
+  Future<String> _fetchAccessId() async {
+    final cookieAtStart = cookie;
     // 获取 access_id
     var resp = await HttpClient.instance.getText(
       "https://live.bilibili.com/lol",
@@ -734,7 +759,10 @@ class BiliBiliSite implements LiveSite {
         .firstMatch(resp)
         ?.group(1)
         ?.replaceAll("\\", "");
-    accessId = id ?? "";
-    return accessId;
+    // 拉取期间账号已切换：不把旧身份的结果写回缓存
+    if (cookie == cookieAtStart) {
+      accessId = id ?? "";
+    }
+    return id ?? "";
   }
 }

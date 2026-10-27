@@ -57,7 +57,11 @@ Future<void> _bootstrap() async {
   PaintingBinding.instance.imageCache.maximumSizeBytes = 50 * 1024 * 1024;
 
   MediaKit.ensureInitialized();
+  // 包信息与 Hive 初始化互不依赖，并行执行，缩短冷启动串行链
+  final packageInfoReady =
+      PackageInfo.fromPlatform().then((info) => Utils.packageInfo = info);
   await Hive.initFlutter();
+  await packageInfoReady;
   //初始化服务
   await initServices();
   // 强制横屏
@@ -126,12 +130,13 @@ Future initServices() async {
   Hive.registerAdapter(FollowUserAdapter());
   Hive.registerAdapter(HistoryAdapter());
 
-  //包信息
-  Utils.packageInfo = await PackageInfo.fromPlatform();
-  //本地存储
+  //包信息已由 _bootstrap 与 Hive 初始化并行预取
+  //本地存储与数据库互不依赖：两组 Hive box 并行打开
   Log.d("Init LocalStorage Service");
-  await Get.put(LocalStorageService()).init();
-  await Get.put(DBService()).init();
+  await Future.wait([
+    Get.put(LocalStorageService()).init(),
+    Get.put(DBService()).init(),
+  ]);
   //初始化设置控制器
   Get.put(AppSettingsController());
 

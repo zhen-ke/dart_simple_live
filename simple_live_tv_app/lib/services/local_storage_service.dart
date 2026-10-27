@@ -146,12 +146,11 @@ class LocalStorageService extends GetxService {
   late Box<String> shieldBox;
 
   Future init() async {
-    settingsBox = await Hive.openBox(
-      "TVLocalStorage",
-    );
-    shieldBox = await Hive.openBox(
-      "TVDanmuShield",
-    );
+    // 两个 box 互不依赖，并行打开
+    final settingsFuture = Hive.openBox("TVLocalStorage");
+    final shieldFuture = Hive.openBox<String>("TVDanmuShield");
+    settingsBox = await settingsFuture;
+    shieldBox = await shieldFuture;
   }
 
   T getValue<T>(dynamic key, T defaultValue) {

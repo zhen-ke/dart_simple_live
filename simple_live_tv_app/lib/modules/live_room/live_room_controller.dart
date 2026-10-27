@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:canvas_danmaku/models/danmaku_content_item.dart';
-import 'package:extended_image/extended_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
@@ -319,7 +318,11 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
       if (!_sessionAlive(gen)) return;
       SmartDialog.showToast(e.toString());
     } finally {
-      SmartDialog.dismiss(status: SmartStatus.loading);
+      // loading 遮罩属于最新一次 loadData：旧会话不能把新会话刚弹出的
+      // 遮罩提前关掉；页面已关闭（无新会话接管）时仍由旧会话负责关掉
+      if (gen == _sessionGen || _roomClosed) {
+        SmartDialog.dismiss(status: SmartStatus.loading);
+      }
       pageLoadding.value = false;
     }
   }
@@ -336,7 +339,10 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
       _qualitesMs = _loadStopwatch.elapsedMilliseconds;
 
       if (playQualites.isEmpty) {
-        SmartDialog.showToast("无法读取播放清晰度");
+        // 快速切房后旧会话的提示不再打扰新房间
+        if (_sessionAlive(gen)) {
+          SmartDialog.showToast("无法读取播放清晰度");
+        }
         return;
       }
       // 画质列表整体替换，在飞的取流请求作废
@@ -358,7 +364,9 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
       unawaited(getPlayUrl());
     } catch (e) {
       Log.logPrint(e);
-      SmartDialog.showToast("无法读取播放清晰度");
+      if (_sessionAlive(gen)) {
+        SmartDialog.showToast("无法读取播放清晰度");
+      }
     }
   }
 
@@ -921,7 +929,9 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     _shieldPatternWorker = null;
 
     danmakuController = null;
-    clearMemoryImageCache();
+    // 不清空全局图片内存缓存：LRU 上限已控住总量，而房间的头像/SC 图片
+    // URL 与首页、关注、历史列表共用同一份缓存键，全局清空会让返回
+    // 列表时所有封面头像重新走网络与解码
     // 页面级焦点节点随控制器一起释放，否则每次进出直播间都会漏一个
     focusNode.dispose();
     super.onClose();

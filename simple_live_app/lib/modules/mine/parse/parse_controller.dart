@@ -202,4 +202,11 @@ class ParseController extends GetxController {
     }
     return "";
   }
+
+  @override
+  void onClose() {
+    roomJumpToController.dispose();
+    getUrlController.dispose();
+    super.onClose();
+  }
 }

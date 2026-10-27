@@ -272,14 +272,13 @@ class FollowService extends GetxService {
       item.liveStatus.value = isLiving ? 2 : 1;
       item.liveStartTime = null;
 
-      // 仅在需要显示开播时间的平台请求详情，避免重复/无效请求拖慢刷新。
+      // 仅在需要显示开播时间的平台请求轻量开播时间接口：
+      // 不为 showTime 拉完整房间详情（详情可能并行触发签名脚本
+      // 拉取、JS 签名等昂贵操作），几百个关注刷新时请求数差一个量级。
       if (isLiving && _shouldLoadLiveDetail(item.siteId)) {
         try {
-          var detail = await site.liveSite.getRoomDetail(
-            roomId: item.roomId,
-            withDanmaku: false,
-          );
-          item.liveStartTime = detail.showTime;
+          item.liveStartTime =
+              await site.liveSite.getRoomShowTime(roomId: item.roomId);
         } catch (e) {
           Log.logPrint(e);
         }

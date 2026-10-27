@@ -23,6 +23,10 @@ class BiliBiliQRLoginController extends GetxController {
 
   Timer? timer;
 
+  /// 轮询防重入：上一轮请求未返回时不发起新的，
+  /// 避免网络慢于轮询间隔时并发轮询、重复处理同一状态
+  bool _polling = false;
+
   var qrcodeUrl = "".obs;
   var qrcodeKey = "";
 
@@ -56,6 +60,8 @@ class BiliBiliQRLoginController extends GetxController {
   }
 
   void startPoll() {
+    // 重新生成二维码前先取消上一轮轮询，避免两路 timer 并发
+    timer?.cancel();
     timer = Timer.periodic(
       const Duration(seconds: 3),
       (timer) {
@@ -65,6 +71,10 @@ class BiliBiliQRLoginController extends GetxController {
   }
 
   void pollQRStatus() async {
+    if (_polling || qrcodeKey.isEmpty) {
+      return;
+    }
+    _polling = true;
     try {
       var response = await HttpClient.instance.get(
         "https://passport.bilibili.com/x/passport-login/web/qrcode/poll",
@@ -84,6 +94,10 @@ class BiliBiliQRLoginController extends GetxController {
           cookies.add(cookie);
         });
         if (cookies.isNotEmpty) {
+          // 登录成功即停止轮询：loadUserInfo 期间不再发新请求，
+          // 在途的下一轮也不会触发重复 Get.back()
+          timer?.cancel();
+          qrcodeKey = "";
           var cookieStr = cookies.join(";");
           BiliBiliAccountService.instance.setCookie(cookieStr);
           await BiliBiliAccountService.instance.loadUserInfo();
@@ -99,6 +113,8 @@ class BiliBiliQRLoginController extends GetxController {
     } catch (e) {
       Log.logPrint(e);
       SmartDialog.showToast(e.toString());
+    } finally {
+      _polling = false;
     }
   }
 

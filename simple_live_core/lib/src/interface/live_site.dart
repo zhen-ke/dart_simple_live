@@ -72,6 +72,14 @@ class LiveSite {
     ));
   }
 
+  /// 轻量读取开播时间：关注列表刷新只为展示"已开播时长"，
+  /// 不应为每个在播关注拉取完整房间详情（详情可能并行触发
+  /// 签名脚本拉取、JS 计算等昂贵操作）。
+  /// 返回 null 表示站点未提供或查询失败。
+  Future<String?> getRoomShowTime({required String roomId}) {
+    return Future.value(null);
+  }
+
   /// 读取房间清晰度
   Future<List<LivePlayQuality>> getPlayQualites(
       {required LiveRoomDetail detail}) {

@@ -22,26 +22,51 @@ class SuperChatCard extends StatefulWidget {
 }
 
 class _SuperChatCardState extends State<SuperChatCard> {
-  late Timer timer;
+  Timer? timer;
 
   int countdown = 0;
 
   @override
   void initState() {
+    super.initState();
+    _resetCountdown();
+    // 外部已按秒驱动倒计时（如播放器 SC 浮层传入 customCountdown）时，
+    // 内部不再起自己的 1 秒 timer：否则每条浮层 SC 每秒重建两次
+    if (widget.customCountdown == null) {
+      timer = Timer.periodic(const Duration(seconds: 1), timerCallback);
+    }
+  }
+
+  @override
+  void didUpdateWidget(SuperChatCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 消息或倒计时驱动方式变化时同步内部状态
+    if (widget.message != oldWidget.message) {
+      _resetCountdown();
+    }
+    if ((widget.customCountdown == null) !=
+        (oldWidget.customCountdown == null)) {
+      if (widget.customCountdown == null) {
+        _resetCountdown();
+        timer ??= Timer.periodic(const Duration(seconds: 1), timerCallback);
+      } else {
+        timer?.cancel();
+        timer = null;
+      }
+    }
+  }
+
+  void _resetCountdown() {
     var currentTime = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     var endTime = widget.message.endTime.millisecondsSinceEpoch ~/ 1000;
 
     countdown = endTime - currentTime;
-
-    timer = Timer.periodic(const Duration(seconds: 1), timerCallback);
-
-    super.initState();
   }
 
   void timerCallback(e) {
     if (countdown <= 0) {
+      timer?.cancel();
       widget.onExpire?.call();
-      timer.cancel();
       return;
     }
 
@@ -123,7 +148,7 @@ class _SuperChatCardState extends State<SuperChatCard> {
 
   @override
   void dispose() {
-    timer.cancel();
+    timer?.cancel();
     super.dispose();
   }
 }

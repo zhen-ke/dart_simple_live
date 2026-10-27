@@ -42,24 +42,14 @@ class DouyinSite implements LiveSite {
     "User-Agent": kDefaultUserAgent,
   };
 
+  /// 每次返回全新副本：调用方（如按房间改写 Referer）对 header 的修改
+  /// 只作用于自己的请求，不会污染共享的基准 headers，
+  /// 也不会串到并发中的其他房间/列表请求上
   Future<Map<String, dynamic>> getRequestHeaders() async {
-    try {
-      // 如果用户已设置 cookie，直接使用用户的 cookie
-      if (cookie.isNotEmpty) {
-        headers["cookie"] = cookie;
-        return headers;
-      }
-
-      // 使用默认的 ttwid cookie（只需要 ttwid 即可获取所有画质）
-      headers["cookie"] = kDefaultCookie;
-      return headers;
-    } catch (e) {
-      CoreLog.error(e);
-      if (!(headers["cookie"]?.toString().isNotEmpty ?? false)) {
-        headers["cookie"] = kDefaultCookie;
-      }
-      return headers;
-    }
+    return {
+      ...headers,
+      "cookie": cookie.isNotEmpty ? cookie : kDefaultCookie,
+    };
   }
 
   @override
@@ -454,7 +444,12 @@ class DouyinSite implements LiveSite {
   Future<String> _getWebCookie(String webRid) async {
     var headResp = await HttpClient.instance.head(
       "https://live.douyin.com/$webRid",
-      header: headers,
+      // 基准 headers 不含 cookie（getRequestHeaders 才注入），
+      // 这里沿用既有行为显式携带
+      header: {
+        ...headers,
+        "cookie": cookie.isNotEmpty ? cookie : kDefaultCookie,
+      },
     );
     var dyCookie = "";
     headResp.headers["set-cookie"]?.forEach((element) {
@@ -776,6 +771,13 @@ class DouyinSite implements LiveSite {
   Future<bool> getLiveStatus({required String roomId}) async {
     var result = await getRoomDetail(roomId: roomId, withDanmaku: false);
     return result.status;
+  }
+
+  @override
+  Future<String?> getRoomShowTime({required String roomId}) {
+    // 开播时间只能从房间详情里取，没有更轻量的入口；
+    // 关注列表在本平台不展示开播时间，返回 null 表示未提供
+    return Future.value(null);
   }
 
   @override

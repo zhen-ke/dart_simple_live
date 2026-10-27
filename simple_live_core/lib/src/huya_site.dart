@@ -213,12 +213,20 @@ class HuyaSite implements LiveSite {
   Future<LivePlayUrl> getPlayUrls(
       {required LiveRoomDetail detail,
       required LivePlayQuality quality}) async {
-    // 各线路并行取 Token：单条失败只丢该线路，不影响整体
+    // 同一房间各 CDN 线路的 streamName 相同，Token 只需按 streamName
+    // 取一次：先为每个流名发起一次 RPC（并发去重），再为所有线路拼 URL。
+    // 单条线路拼装失败只丢该线路，不影响整体
+    final tokenTasks = <String, Future<String>>{};
     final urls = await Future.wait(
       (quality.data["urls"] as List).map((element) async {
         try {
           var line = element as HuyaLineModel;
-          return await getPlayUrl(line, quality.data["bitRate"]);
+          var antiCode = await tokenTasks.putIfAbsent(
+            line.streamName,
+            () => getCndTokenInfoEx(line.streamName),
+          );
+          return await getPlayUrl(line, quality.data["bitRate"],
+              antiCode: antiCode);
         } catch (_) {
           return "";
         }
@@ -233,8 +241,9 @@ class HuyaSite implements LiveSite {
     );
   }
 
-  Future<String> getPlayUrl(HuyaLineModel line, int bitRate) async {
-    var antiCode = await getCndTokenInfoEx(line.streamName);
+  Future<String> getPlayUrl(HuyaLineModel line, int bitRate,
+      {String? antiCode}) async {
+    antiCode ??= await getCndTokenInfoEx(line.streamName);
     antiCode = buildAntiCode(line.streamName, line.presenterUid, antiCode);
     var url = '${line.line}/${line.streamName}.flv?${antiCode}&codec=264';
     if (bitRate > 0) {
@@ -259,7 +268,7 @@ class HuyaSite implements LiveSite {
     bool isWap = platformId == 103;
     var clacStartTime = DateTime.now().millisecondsSinceEpoch;
 
-    CoreLog.i(
+    CoreLog.d(
         "using $presenterUid | ctype-{$ctype} | platformId - {$platformId} | isWap - {$isWap} | $clacStartTime");
 
     var seqId = presenterUid + clacStartTime;
@@ -538,6 +547,13 @@ class HuyaSite implements LiveSite {
   Future<bool> getLiveStatus({required String roomId}) async {
     var roomInfo = await _getRoomInfo(roomId);
     return roomInfo["roomInfo"]["eLiveStatus"] == 2;
+  }
+
+  @override
+  Future<String?> getRoomShowTime({required String roomId}) {
+    // 轻量开播时间查询只有 h5room 之类的整页解析可依赖，得不偿失；
+    // 关注列表在本平台不展示开播时间，返回 null 表示未提供
+    return Future.value(null);
   }
 
   /// 匿名登录获取uid

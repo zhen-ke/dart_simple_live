@@ -85,6 +85,10 @@ class AppSearchController extends GetxController
   @override
   void onClose() {
     streamSubscription?.cancel();
+    // dispose TabController 会一并释放 animation 并移除其监听，
+    // 搜索框 controller 同样随页面释放，避免重复进出搜索页累积监听器
+    tabController.dispose();
+    searchController.dispose();
     super.onClose();
   }
 }

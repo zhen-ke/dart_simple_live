@@ -213,12 +213,11 @@ class LocalStorageService extends GetxService {
   late Box<String> shieldBox;
 
   Future init() async {
-    settingsBox = await Hive.openBox(
-      "LocalStorage",
-    );
-    shieldBox = await Hive.openBox(
-      "DanmuShield",
-    );
+    // 两个 box 互不依赖，并行打开
+    final settingsFuture = Hive.openBox("LocalStorage");
+    final shieldFuture = Hive.openBox<String>("DanmuShield");
+    settingsBox = await settingsFuture;
+    shieldBox = await shieldFuture;
   }
 
   /// 可进入备份/导出的设置快照。

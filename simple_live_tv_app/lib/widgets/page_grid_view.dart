@@ -30,10 +30,12 @@ class PageGridView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Obx(
-      () => Stack(
-        children: [
-          MasonryGridView.count(
+    // 按订阅粒度拆分 Obx：数据列表只依赖 list，加载状态只依赖各状态位。
+    // 任何一处变化只重建自己的小分支，不再整棵网格重建
+    return Stack(
+      children: [
+        Obx(
+          () => MasonryGridView.count(
             padding: padding,
             controller: pageController.scrollController,
             itemCount: pageController.list.length,
@@ -42,25 +44,31 @@ class PageGridView extends StatelessWidget {
             crossAxisSpacing: crossAxisSpacing,
             mainAxisSpacing: mainAxisSpacing,
           ),
-          Offstage(
+        ),
+        Obx(
+          () => Offstage(
             offstage: !pageController.pageEmpty.value,
             child: AppEmptyWidget(
               onRefresh: () => pageController.refreshData(),
             ),
           ),
-          Offstage(
+        ),
+        Obx(
+          () => Offstage(
             offstage: !(showPageLoadding && pageController.pageLoadding.value),
             child: const AppLoaddingWidget(),
           ),
-          Offstage(
+        ),
+        Obx(
+          () => Offstage(
             offstage: !pageController.pageError.value,
             child: AppErrorWidget(
               errorMsg: pageController.errorMsg.value,
               onRefresh: () => pageController.refreshData(),
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

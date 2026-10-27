@@ -468,17 +468,7 @@ class DouyuSite implements LiveSite {
     // 这里直接命中缓存，不再重复拉脚本签名；
     // h5room 只提供开播时间，失败不阻塞详情
     final roomInfoFuture = _getRoomInfo(roomId);
-    final h5RoomInfoFuture = HttpClient.instance
-        .getJson(
-          "https://www.douyu.com/swf_api/h5room/$roomId",
-          queryParameters: {},
-          header: {
-            ..._requestHeaders,
-            'referer': 'https://www.douyu.com/$roomId'
-          },
-        )
-        .then((value) => value is Map ? value : null)
-        .onError((_, __) => null);
+    final h5RoomInfoFuture = _getH5RoomInfo(roomId);
     // V1 模式下画质与取流均不使用 V0 签名参数，跳过整条签名链路
     final playArgsFuture = _preferV1
         ? Future<String>.value("")
@@ -554,6 +544,29 @@ class DouyuSite implements LiveSite {
       roomInfo = result["room"];
     }
     return roomInfo;
+  }
+
+  /// h5room 只提供开播时间等轻量信息，失败返回 null 不阻塞调用方
+  Future<Map?> _getH5RoomInfo(String roomId) async {
+    try {
+      var result = await HttpClient.instance.getJson(
+        "https://www.douyu.com/swf_api/h5room/$roomId",
+        queryParameters: {},
+        header: {
+          ..._requestHeaders,
+          'referer': 'https://www.douyu.com/$roomId'
+        },
+      );
+      return result is Map ? result : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  Future<String?> getRoomShowTime({required String roomId}) async {
+    var h5RoomInfo = await _getH5RoomInfo(roomId);
+    return h5RoomInfo?["data"]?["show_time"]?.toString();
   }
 
   //生成指定长度的16进制随机字符串

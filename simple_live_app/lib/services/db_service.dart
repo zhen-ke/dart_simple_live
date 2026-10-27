@@ -18,10 +18,16 @@ class DBService extends GetxService {
   final Uuid uuid = const Uuid();
 
   Future init() async {
-    historyBox = await Hive.openBox("History");
-    followBox = await Hive.openBox("FollowUser");
-    tagBox = await Hive.openBox("FollowUserTag");
-    tagOrderBox = await Hive.openBox("FollowUserTagOrder");
+    // 四个 box 互不依赖，并行打开，冷启动不必串行等完四轮磁盘 IO；
+    // 标签迁移只读已打开的内存数据，代价极小，必须先于关注页读取完成
+    final historyFuture = Hive.openBox<History>("History");
+    final followFuture = Hive.openBox<FollowUser>("FollowUser");
+    final tagFuture = Hive.openBox<FollowUserTag>("FollowUserTag");
+    final tagOrderFuture = Hive.openBox("FollowUserTagOrder");
+    historyBox = await historyFuture;
+    followBox = await followFuture;
+    tagBox = await tagFuture;
+    tagOrderBox = await tagOrderFuture;
     await _migrateTagKeys();
   }
 
