@@ -421,9 +421,7 @@ class LiveRoomPage extends GetView<LiveRoomController> {
                     ),
                     const SizedBox(width: 3),
                     Text(
-                      Utils.onlineToString(
-                        controller.detail.value?.online ?? 0,
-                      ),
+                      Utils.onlineToString(controller.online.value),
                       style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
@@ -454,9 +452,7 @@ class LiveRoomPage extends GetView<LiveRoomController> {
                         ),
                         const SizedBox(width: 3),
                         Text(
-                          Utils.onlineToString(
-                            controller.detail.value?.online ?? 0,
-                          ),
+                          Utils.onlineToString(controller.online.value),
                           style: const TextStyle(
                             fontSize: 11.5,
                             fontWeight: FontWeight.w600,
@@ -704,6 +700,10 @@ class LiveRoomPage extends GetView<LiveRoomController> {
                                 padding: AppStyle.edgeInsetsA12,
                                 itemCount: controller.messages.length,
                                 itemBuilder: (_, i) {
+                                  // 列表可能先于重建通知被截断/清空，防御越界
+                                  if (i >= controller.messages.length) {
+                                    return const SizedBox.shrink();
+                                  }
                                   var item = controller.messages[i];
                                   return RepaintBoundary(
                                     child: buildMessageItem(

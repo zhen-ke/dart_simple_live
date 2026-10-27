@@ -8,21 +8,22 @@ import 'package:simple_live_tv_app/widgets/highlight_widget.dart';
 import 'package:simple_live_tv_app/widgets/net_image.dart';
 import 'package:marquee/marquee.dart';
 
-class LiveRoomCard extends StatelessWidget {
+/// [focusNode] 可选：不传时内部创建并自管理生命周期
+class LiveRoomCard extends StatefulWidget {
   final String cover;
   final String title;
   final String anchor;
   final String roomId;
   final int online;
   final bool autofocus;
-  final AppFocusNode focusNode;
+  final AppFocusNode? focusNode;
   final Function()? onTap;
   const LiveRoomCard({
     required this.cover,
     required this.title,
     required this.anchor,
     required this.roomId,
-    required this.focusNode,
+    this.focusNode,
     required this.online,
     this.autofocus = false,
     this.onTap,
@@ -30,11 +31,19 @@ class LiveRoomCard extends StatelessWidget {
   });
 
   @override
+  State<LiveRoomCard> createState() => _LiveRoomCardState();
+}
+
+class _LiveRoomCardState extends State<LiveRoomCard>
+    with ManagedAppFocusNode<LiveRoomCard> {
+  AppFocusNode get _node => resolveFocusNode(widget.focusNode);
+
+  @override
   Widget build(BuildContext context) {
     return HighlightWidget(
-      focusNode: focusNode,
+      focusNode: _node,
       color: Colors.white10,
-      onTap: onTap,
+      onTap: widget.onTap,
       borderRadius: AppStyle.radius16,
       child: Obx(
         () => Column(
@@ -50,7 +59,7 @@ class LiveRoomCard extends StatelessWidget {
                   AspectRatio(
                     aspectRatio: 16 / 9,
                     child: NetImage(
-                      cover,
+                      widget.cover,
                       cacheWidth: 400,
                     ),
                   ),
@@ -61,7 +70,7 @@ class LiveRoomCard extends StatelessWidget {
                       padding:
                           AppStyle.edgeInsetsH8.copyWith(top: 4.w, bottom: 4.w),
                       decoration: BoxDecoration(
-                        color: focusNode.isFoucsed.value
+                        color: _node.isFoucsed.value
                             ? Colors.white
                             : Colors.black54,
                         borderRadius: AppStyle.radius8,
@@ -76,7 +85,7 @@ class LiveRoomCard extends StatelessWidget {
                                 padding: AppStyle.edgeInsetsR8,
                                 child: Icon(
                                   Icons.whatshot,
-                                  color: focusNode.isFoucsed.value
+                                  color: _node.isFoucsed.value
                                       ? Colors.orange
                                       : Colors.white,
                                   size: 20.w,
@@ -84,13 +93,13 @@ class LiveRoomCard extends StatelessWidget {
                               ),
                             ),
                             TextSpan(
-                              text: Utils.onlineToString(online),
+                              text: Utils.onlineToString(widget.online),
                             ),
                           ],
                         ),
                         style: TextStyle(
                           fontSize: 20.w,
-                          color: focusNode.isFoucsed.value
+                          color: _node.isFoucsed.value
                               ? Colors.black
                               : Colors.white,
                         ),
@@ -99,29 +108,25 @@ class LiveRoomCard extends StatelessWidget {
                   ),
                 ],
               ),
-              // child: Container(
-              //   height: 200.w,
-              // ),
             ),
             AppStyle.vGap8,
             Padding(
               padding: AppStyle.edgeInsetsH20,
               child: SizedBox(
                 height: 56.w,
-                child: focusNode.isFoucsed.value
+                child: _node.isFoucsed.value
                     ? Marquee(
-                        text: title,
+                        text: widget.title,
                         style: AppStyle.textStyleBlack,
                         startAfter: const Duration(seconds: 1),
                         velocity: 20,
                         blankSpace: 200.w,
-                        //decelerationDuration: const Duration(seconds: 2),
                         scrollAxis: Axis.horizontal,
                       )
                     : Container(
                         alignment: Alignment.centerLeft,
                         child: Text(
-                          title,
+                          widget.title,
                           style: AppStyle.textStyleWhite,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -135,7 +140,7 @@ class LiveRoomCard extends StatelessWidget {
                 AppStyle.hGap20,
                 Icon(
                   Icons.account_circle,
-                  color: focusNode.isFoucsed.value
+                  color: _node.isFoucsed.value
                       ? Colors.black54
                       : Colors.white54,
                   size: 32.w,
@@ -143,8 +148,8 @@ class LiveRoomCard extends StatelessWidget {
                 AppStyle.hGap12,
                 Expanded(
                   child: Text(
-                    anchor,
-                    style: focusNode.isFoucsed.value
+                    widget.anchor,
+                    style: _node.isFoucsed.value
                         ? AppStyle.subTextStyleBlack
                         : AppStyle.subTextStyleWhite,
                     maxLines: 1,

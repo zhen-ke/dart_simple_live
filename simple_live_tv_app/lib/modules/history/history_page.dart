@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:get/get.dart';
-import 'package:simple_live_tv_app/app/app_focus_node.dart';
 import 'package:simple_live_tv_app/app/app_style.dart';
 import 'package:simple_live_tv_app/modules/history/history_controller.dart';
 import 'package:simple_live_tv_app/widgets/app_scaffold.dart';
@@ -23,7 +22,6 @@ class HistoryPage extends GetView<HistoryController> {
             children: [
               AppStyle.hGap48,
               HighlightButton(
-                focusNode: AppFocusNode(),
                 iconData: Icons.arrow_back,
                 text: "返回",
                 autofocus: true,
@@ -42,7 +40,6 @@ class HistoryPage extends GetView<HistoryController> {
               AppStyle.hGap24,
               const Spacer(),
               HighlightButton(
-                focusNode: AppFocusNode(),
                 iconData: Icons.delete_outline_rounded,
                 text: "清空",
                 onTap: () {

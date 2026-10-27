@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:get/get.dart';
-import 'package:simple_live_tv_app/app/app_focus_node.dart';
 import 'package:simple_live_tv_app/app/app_style.dart';
 import 'package:simple_live_tv_app/app/sites.dart';
 import 'package:simple_live_tv_app/modules/search/room/search_room_controller.dart';
@@ -27,7 +26,6 @@ class SearchRoomPage extends GetView<SearchRoomController> {
             children: [
               AppStyle.hGap48,
               HighlightButton(
-                focusNode: AppFocusNode(),
                 iconData: Icons.arrow_back,
                 text: "返回",
                 //autofocus: true,
@@ -60,7 +58,6 @@ class SearchRoomPage extends GetView<SearchRoomController> {
               ),
               AppStyle.hGap24,
               // HighlightButton(
-              //   focusNode: AppFocusNode(),
               //   iconData: Icons.refresh,
               //   text: "刷新",
               //   onTap: () {
@@ -85,7 +82,6 @@ class SearchRoomPage extends GetView<SearchRoomController> {
                       ),
                       text: e.name,
                       selected: controller.siteId.value == e.id,
-                      focusNode: AppFocusNode(),
                       onTap: () {
                         controller.setSite(e.id);
                       },

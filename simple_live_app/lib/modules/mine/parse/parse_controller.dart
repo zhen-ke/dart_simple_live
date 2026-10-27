@@ -8,9 +8,27 @@ import 'package:simple_live_app/app/log.dart';
 import 'package:simple_live_app/app/sites.dart';
 import 'package:simple_live_app/routes/app_navigation.dart';
 
+/// 链接解析结果：[site] 平台下的 [roomId]
+class ParsedRoom {
+  const ParsedRoom(this.site, this.roomId);
+
+  final Site site;
+  final String roomId;
+}
+
 class ParseController extends GetxController {
   final TextEditingController roomJumpToController = TextEditingController();
   final TextEditingController getUrlController = TextEditingController();
+
+  /// 只用于跟随短链 302 的请求：validateStatus 放行使 302 直接返回响应而非抛异常
+  static final Dio _locationDio = Dio(
+    BaseOptions(
+      connectTimeout: const Duration(seconds: 8),
+      receiveTimeout: const Duration(seconds: 8),
+      followRedirects: false,
+      validateStatus: (_) => true,
+    ),
+  );
 
   void jumpToRoom(String e) async {
     if (e.isEmpty) {
@@ -20,17 +38,14 @@ class ParseController extends GetxController {
     // 隐藏键盘
     FocusManager.instance.primaryFocus?.unfocus();
 
-    var parseResult = await parse(e);
-    if (parseResult.isEmpty && parseResult.first == "") {
+    SmartDialog.showLoading(msg: "解析中");
+    var result = await parse(e);
+    SmartDialog.dismiss(status: SmartStatus.loading);
+    if (result == null) {
       SmartDialog.showToast("无法解析此链接");
       return;
     }
-
-    // 延迟200ms跳转，等待键盘隐藏
-    Future.delayed(const Duration(milliseconds: 200), () {
-      Site site = parseResult[1];
-      AppNavigator.toLiveRoomDetail(site: site, roomId: parseResult.first);
-    });
+    AppNavigator.toLiveRoomDetail(site: result.site, roomId: result.roomId);
   }
 
   void getPlayUrl(String e) async {
@@ -38,15 +53,15 @@ class ParseController extends GetxController {
       SmartDialog.showToast("链接不能为空");
       return;
     }
-    var parseResult = await parse(e);
-    if (parseResult.isEmpty && parseResult.first == "") {
+    var result = await parse(e);
+    if (result == null) {
       SmartDialog.showToast("无法解析此链接");
       return;
     }
-    Site site = parseResult[1];
+    Site site = result.site;
     try {
       SmartDialog.showLoading(msg: "");
-      var detail = await site.liveSite.getRoomDetail(roomId: parseResult.first);
+      var detail = await site.liveSite.getRoomDetail(roomId: result.roomId);
       var qualites = await site.liveSite.getPlayQualites(detail: detail);
       SmartDialog.dismiss(status: SmartStatus.loading);
       if (qualites.isEmpty) {
@@ -54,7 +69,7 @@ class ParseController extends GetxController {
 
         return;
       }
-      var result = await Get.dialog(SimpleDialog(
+      var quality = await Get.dialog(SimpleDialog(
         title: const Text("选择清晰度"),
         children: qualites
             .map(
@@ -70,12 +85,12 @@ class ParseController extends GetxController {
             )
             .toList(),
       ));
-      if (result == null) {
+      if (quality == null) {
         return;
       }
       SmartDialog.showLoading(msg: "");
       var playUrl =
-          await site.liveSite.getPlayUrls(detail: detail, quality: result);
+          await site.liveSite.getPlayUrls(detail: detail, quality: quality);
       SmartDialog.dismiss(status: SmartStatus.loading);
       await Get.dialog(SimpleDialog(
         title: const Text("选择线路"),
@@ -106,12 +121,13 @@ class ParseController extends GetxController {
     }
   }
 
-  Future<List> parse(String url) async {
-    var id = "";
+  /// 解析直播间链接，短链会跟随 302 重定向；
+  /// 无法识别的平台或缺少房间号时返回 null
+  Future<ParsedRoom?> parse(String url) async {
     if (url.contains("bilibili.com")) {
       var regExp = RegExp(r"bilibili\.com/([\d|\w]+)");
-      id = regExp.firstMatch(url)?.group(1) ?? "";
-      return [id, Sites.allSites[Constant.kBiliBili]!];
+      var id = regExp.firstMatch(url)?.group(1) ?? "";
+      return _room(Constant.kBiliBili, id);
     }
 
     if (url.contains("b23.tv")) {
@@ -125,29 +141,29 @@ class ParseController extends GetxController {
     if (url.contains("douyu.com")) {
       var regExp = RegExp(r"douyu\.com/([\d|\w]+)");
       // 适配 topic_url
-      if(url.contains("topic")){
+      if (url.contains("topic")) {
         regExp = RegExp(r"[?&]rid=([\d]+)");
       }
-      id = regExp.firstMatch(url)?.group(1) ?? "";
+      var id = regExp.firstMatch(url)?.group(1) ?? "";
 
-      return [id, Sites.allSites[Constant.kDouyu]!];
+      return _room(Constant.kDouyu, id);
     }
     if (url.contains("huya.com")) {
       var regExp = RegExp(r"huya\.com/([\d|\w]+)");
-      id = regExp.firstMatch(url)?.group(1) ?? "";
+      var id = regExp.firstMatch(url)?.group(1) ?? "";
 
-      return [id, Sites.allSites[Constant.kHuya]!];
+      return _room(Constant.kHuya, id);
     }
     if (url.contains("live.douyin.com")) {
       var regExp = RegExp(r"live\.douyin\.com/([\d|\w]+)");
-      id = regExp.firstMatch(url)?.group(1) ?? "";
+      var id = regExp.firstMatch(url)?.group(1) ?? "";
 
-      return [id, Sites.allSites[Constant.kDouyin]!];
+      return _room(Constant.kDouyin, id);
     }
     if (url.contains("webcast.amemv.com")) {
       var regExp = RegExp(r"reflow/(\d+)");
-      id = regExp.firstMatch(url)?.group(1) ?? "";
-      return [id, Sites.allSites[Constant.kDouyin]!];
+      var id = regExp.firstMatch(url)?.group(1) ?? "";
+      return _room(Constant.kDouyin, id);
     }
     if (url.contains("v.douyin.com")) {
       var regExp = RegExp(r"http.?://v.douyin.com/[\d\w]+/");
@@ -156,24 +172,27 @@ class ParseController extends GetxController {
       return await parse(location);
     }
 
-    return [];
+    return null;
   }
 
+  ParsedRoom? _room(String siteId, String roomId) {
+    final site = Sites.allSites[siteId];
+    if (site == null || roomId.isEmpty) {
+      return null;
+    }
+    return ParsedRoom(site, roomId);
+  }
+
+  /// 获取短链的 302 跳转地址，失败或非重定向返回空串
   Future<String> getLocation(String url) async {
+    if (url.isEmpty) return "";
     try {
-      if (url.isEmpty) return "";
-      await Dio().get(
-        url,
-        options: Options(
-          followRedirects: false,
-        ),
-      );
-    } on DioException catch (e) {
-      if (e.response!.statusCode == 302) {
-        var redirectUrl = e.response!.headers.value("Location");
-        if (redirectUrl != null) {
-          return redirectUrl;
-        }
+      final response = await _locationDio.get(url);
+      final code = response.statusCode ?? 0;
+      if (code == 301 || code == 302 || code == 307 || code == 308) {
+        var location = response.headers.value("location") ?? "";
+        // Location 可能是相对路径，基于原地址解析为绝对地址
+        return location.isEmpty ? "" : Uri.parse(url).resolve(location).toString();
       }
     } catch (e) {
       Log.logPrint(e);

@@ -5,27 +5,37 @@ import 'package:simple_live_tv_app/app/app_focus_node.dart';
 import 'package:simple_live_tv_app/app/app_style.dart';
 import 'package:simple_live_tv_app/widgets/highlight_widget.dart';
 
-class HomeBigButton extends StatelessWidget {
+/// [focusNode] 可选：不传时内部创建并自管理生命周期
+class HomeBigButton extends StatefulWidget {
   final String text;
   final IconData iconData;
-  final AppFocusNode focusNode;
+  final AppFocusNode? focusNode;
   final Function()? onTap;
   final bool autofocus;
   const HomeBigButton({
     required this.iconData,
     required this.text,
     this.onTap,
-    required this.focusNode,
+    this.focusNode,
     this.autofocus = false,
     super.key,
   });
+
+  @override
+  State<HomeBigButton> createState() => _HomeBigButtonState();
+}
+
+class _HomeBigButtonState extends State<HomeBigButton>
+    with ManagedAppFocusNode<HomeBigButton> {
+  AppFocusNode get _node => resolveFocusNode(widget.focusNode);
+
   @override
   Widget build(BuildContext context) {
     return Obx(
       () => HighlightWidget(
-        onTap: onTap,
-        autofocus: autofocus,
-        focusNode: focusNode,
+        onTap: widget.onTap,
+        autofocus: widget.autofocus,
+        focusNode: _node,
         borderRadius: AppStyle.radius16,
         color: Colors.white10,
         child: Container(
@@ -40,19 +50,17 @@ class HomeBigButton extends StatelessWidget {
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
-                  iconData,
+                  widget.iconData,
                   size: 64.w,
-                  color:
-                      focusNode.isFoucsed.value ? Colors.black : Colors.white,
+                  color: _node.isFoucsed.value ? Colors.black : Colors.white,
                 ),
               ),
               AppStyle.vGap24,
               Text(
-                text,
+                widget.text,
                 style: TextStyle(
                   fontSize: 36.w,
-                  color:
-                      focusNode.isFoucsed.value ? Colors.black : Colors.white,
+                  color: _node.isFoucsed.value ? Colors.black : Colors.white,
                 ),
               ),
             ],

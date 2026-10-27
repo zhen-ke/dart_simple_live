@@ -1,5 +1,4 @@
 import 'package:simple_live_core/simple_live_core.dart';
-import 'package:simple_live_tv_app/app/app_focus_node.dart';
 
 class Sites {
   static final Map<String, Site> allSites = {
@@ -44,7 +43,6 @@ class Site {
   final String logo;
   final LiveSite liveSite;
   final int index;
-  AppFocusNode appFocusNode = AppFocusNode();
   Site({
     required this.id,
     required this.liveSite,

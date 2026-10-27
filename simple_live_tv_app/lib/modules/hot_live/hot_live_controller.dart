@@ -1,7 +1,7 @@
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:simple_live_core/simple_live_core.dart';
-import 'package:simple_live_tv_app/app/app_focus_node.dart';
+import 'package:simple_live_tv_app/app/base_focus_model.dart';
 import 'package:simple_live_tv_app/app/constant.dart';
 import 'package:simple_live_tv_app/app/controller/base_controller.dart';
 import 'package:simple_live_tv_app/app/sites.dart';
@@ -52,7 +52,7 @@ class HotliveController extends BasePageController<LiveRoomItemExt> {
   }
 }
 
-class LiveRoomItemExt extends LiveRoomItem {
+class LiveRoomItemExt extends LiveRoomItem with BaseFocusModel {
   LiveRoomItemExt({
     required super.roomId,
     required super.title,
@@ -60,6 +60,4 @@ class LiveRoomItemExt extends LiveRoomItem {
     required super.userName,
     super.online = 0,
   });
-
-  AppFocusNode focusNode = AppFocusNode();
 }

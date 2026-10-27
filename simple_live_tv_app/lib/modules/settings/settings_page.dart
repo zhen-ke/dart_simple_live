@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
-import 'package:simple_live_tv_app/app/app_focus_node.dart';
 import 'package:simple_live_tv_app/app/app_style.dart';
 import 'package:simple_live_tv_app/app/controller/app_settings_controller.dart';
 import 'package:simple_live_tv_app/app/utils.dart';
@@ -29,7 +28,6 @@ class SettingsPage extends GetView<SettingsController> {
             children: [
               AppStyle.hGap48,
               HighlightButton(
-                focusNode: AppFocusNode(),
                 iconData: Icons.arrow_back,
                 text: "返回",
                 onTap: () {
@@ -54,7 +52,6 @@ class SettingsPage extends GetView<SettingsController> {
             children: [
               Obx(
                 () => HighlightButton(
-                  focusNode: AppFocusNode(),
                   iconData: Icons.play_circle_outline,
                   text: "播放",
                   selected: controller.tabIndex.value == 0,
@@ -66,7 +63,6 @@ class SettingsPage extends GetView<SettingsController> {
               AppStyle.hGap32,
               Obx(
                 () => HighlightButton(
-                  focusNode: AppFocusNode(),
                   iconData: Icons.subtitles_outlined,
                   text: "弹幕",
                   selected: controller.tabIndex.value == 1,
@@ -78,7 +74,6 @@ class SettingsPage extends GetView<SettingsController> {
               AppStyle.hGap32,
               Obx(
                 () => HighlightButton(
-                  focusNode: AppFocusNode(),
                   iconData: Icons.favorite_border,
                   text: "关注",
                   selected: controller.tabIndex.value == 2,
@@ -90,7 +85,6 @@ class SettingsPage extends GetView<SettingsController> {
               AppStyle.hGap32,
               Obx(
                 () => HighlightButton(
-                  focusNode: AppFocusNode(),
                   iconData: Icons.account_circle_outlined,
                   selected: controller.tabIndex.value == 3,
                   text: "账号",
@@ -102,7 +96,6 @@ class SettingsPage extends GetView<SettingsController> {
               AppStyle.hGap32,
               Obx(
                 () => HighlightButton(
-                  focusNode: AppFocusNode(),
                   iconData: Icons.info_outline,
                   selected: controller.tabIndex.value == 4,
                   text: "关于",
@@ -451,7 +444,6 @@ class SettingsPage extends GetView<SettingsController> {
         ),
         AppStyle.vGap24,
         HighlightListTile(
-          focusNode: AppFocusNode(),
           title: "虎牙账号",
           subtitle: "无需登录",
           leading: Image.asset(
@@ -465,7 +457,6 @@ class SettingsPage extends GetView<SettingsController> {
         ),
         AppStyle.vGap24,
         HighlightListTile(
-          focusNode: AppFocusNode(),
           title: "抖音账号",
           subtitle: "无需登录",
           leading: Image.asset(

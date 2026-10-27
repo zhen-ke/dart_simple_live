@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:qr_flutter/qr_flutter.dart';
-import 'package:simple_live_tv_app/app/app_focus_node.dart';
 import 'package:simple_live_tv_app/app/app_style.dart';
 import 'package:simple_live_tv_app/modules/account/bilibili/qr_login_controller.dart';
 import 'package:simple_live_tv_app/widgets/app_scaffold.dart';
@@ -22,7 +21,6 @@ class BiliBiliQRLoginPage extends GetView<BiliBiliQRLoginController> {
             children: [
               AppStyle.hGap48,
               HighlightButton(
-                focusNode: AppFocusNode(),
                 iconData: Icons.arrow_back,
                 text: "返回",
                 autofocus: true,
@@ -70,7 +68,6 @@ class BiliBiliQRLoginPage extends GetView<BiliBiliQRLoginController> {
                               style: AppStyle.textStyleWhite,
                             ),
                             HighlightButton(
-                              focusNode: AppFocusNode(),
                               iconData: Icons.refresh,
                               text: "重试",
                               onTap: controller.loadQRCode,
@@ -87,7 +84,6 @@ class BiliBiliQRLoginPage extends GetView<BiliBiliQRLoginController> {
                               style: AppStyle.textStyleWhite,
                             ),
                             HighlightButton(
-                              focusNode: AppFocusNode(),
                               iconData: Icons.refresh,
                               text: "刷新",
                               onTap: controller.loadQRCode,

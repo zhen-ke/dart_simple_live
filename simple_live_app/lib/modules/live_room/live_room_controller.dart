@@ -264,15 +264,7 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     if (_pendingMessages.isNotEmpty) {
       messages.addAll(_pendingMessages);
       _pendingMessages.clear();
-      _trimMessagesIfNeeded();
-
-      update(['chatList']);
-
-      if (!disableAutoScroll.value) {
-        WidgetsBinding.instance.addPostFrameCallback(
-          (_) => chatScrollToBottom(),
-        );
-      }
+      _commitChatList();
     }
 
     if (_pendingDanmaku.isNotEmpty) {
@@ -289,6 +281,18 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
       }
       addDanmaku(batch);
       _pendingDanmaku.clear();
+    }
+  }
+
+  /// messages 变更的唯一提交出口：截断历史并通知聊天列表重建，钉底时滚到最新。
+  /// 任何直接改 messages 的路径都必须走这里，否则会出现列表不刷新或越界。
+  void _commitChatList() {
+    _trimMessagesIfNeeded();
+    update(['chatList']);
+    if (!disableAutoScroll.value) {
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => chatScrollToBottom(),
+      );
     }
   }
 
@@ -405,9 +409,23 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
 
   /// 初始化弹幕接收事件
   void initDanmau() {
-    liveDanmaku.onMessage = onWSMessage;
-    liveDanmaku.onClose = onWSClose;
-    liveDanmaku.onReady = onWSReady;
+    // 记录绑定时的会话代次：换房/刷新后旧弹幕实例的迟到回调一律丢弃
+    final gen = _sessionGen;
+    liveDanmaku.onMessage = (msg) {
+      if (gen == _sessionGen) {
+        onWSMessage(msg);
+      }
+    };
+    liveDanmaku.onClose = (msg) {
+      if (gen == _sessionGen) {
+        onWSClose(msg);
+      }
+    };
+    liveDanmaku.onReady = () {
+      if (gen == _sessionGen) {
+        onWSReady();
+      }
+    };
   }
 
   /// 接收到WebSocket信息
@@ -459,7 +477,7 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
         color: LiveMessageColor.white,
       ),
     );
-    _trimMessagesIfNeeded();
+    _commitChatList();
   }
 
   /// 接收到WebSocket关闭信息
@@ -1464,6 +1482,8 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     liveDanmaku.stop();
     _clearPendingMessages();
     messages.clear();
+    // 同帧通知列表归零，避免清空后到下次通知之间 itemBuilder 按旧 itemCount 越界
+    update(['chatList']);
     superChats.clear();
     danmakuController?.clear();
 

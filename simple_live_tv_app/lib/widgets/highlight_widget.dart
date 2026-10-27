@@ -7,8 +7,11 @@ import 'package:simple_live_tv_app/app/app_style.dart';
 typedef FocusOnKeyDownCallback = KeyEventResult Function();
 
 /// 高亮组件
-class HighlightWidget extends StatelessWidget {
-  final AppFocusNode focusNode;
+///
+/// [focusNode] 可选：不传时组件内部创建并在销毁时释放；
+/// 需要外部主动 requestFocus 时才由调用方传入并自行管理
+class HighlightWidget extends StatefulWidget {
+  final AppFocusNode? focusNode;
   final Widget child;
   final FocusOnKeyDownCallback? onUpKey;
   final FocusOnKeyDownCallback? onDownKey;
@@ -23,7 +26,7 @@ class HighlightWidget extends StatelessWidget {
   final double order;
   final bool selected;
   const HighlightWidget({
-    required this.focusNode,
+    this.focusNode,
     required this.child,
     this.onUpKey,
     this.onDownKey,
@@ -41,55 +44,63 @@ class HighlightWidget extends StatelessWidget {
   }) : super(key: key);
 
   @override
+  State<HighlightWidget> createState() => _HighlightWidgetState();
+}
+
+class _HighlightWidgetState extends State<HighlightWidget>
+    with ManagedAppFocusNode<HighlightWidget> {
+  AppFocusNode get _node => resolveFocusNode(widget.focusNode);
+
+  @override
   Widget build(BuildContext context) {
     return FocusTraversalOrder(
-      order: NumericFocusOrder(order),
+      order: NumericFocusOrder(widget.order),
       child: Focus(
-        focusNode: focusNode,
-        autofocus: autofocus,
-        onFocusChange: onFocusChange,
+        focusNode: _node,
+        autofocus: widget.autofocus,
+        onFocusChange: widget.onFocusChange,
         onKeyEvent: (node, e) {
           if (e is KeyDownEvent) {
             if (e.logicalKey == LogicalKeyboardKey.arrowRight) {
-              return onRightKey?.call() ?? KeyEventResult.ignored;
+              return widget.onRightKey?.call() ?? KeyEventResult.ignored;
             }
             if (e.logicalKey == LogicalKeyboardKey.arrowLeft) {
-              return onLeftKey?.call() ?? KeyEventResult.ignored;
+              return widget.onLeftKey?.call() ?? KeyEventResult.ignored;
             }
             if (e.logicalKey == LogicalKeyboardKey.arrowUp) {
-              return onUpKey?.call() ?? KeyEventResult.ignored;
+              return widget.onUpKey?.call() ?? KeyEventResult.ignored;
             }
             if (e.logicalKey == LogicalKeyboardKey.arrowDown) {
-              return onDownKey?.call() ?? KeyEventResult.ignored;
+              return widget.onDownKey?.call() ?? KeyEventResult.ignored;
             }
             if (e.logicalKey == LogicalKeyboardKey.enter ||
                 e.logicalKey == LogicalKeyboardKey.select ||
                 e.logicalKey == LogicalKeyboardKey.space) {
-              return onTap?.call() ?? KeyEventResult.ignored;
+              return widget.onTap?.call() ?? KeyEventResult.ignored;
             }
           }
 
           return KeyEventResult.ignored;
         },
         child: GestureDetector(
-          onTap: onTap,
+          onTap: widget.onTap,
           child: Obx(
             () => AnimatedScale(
-              scale: focusNode.isFoucsed.value ? 1.1 : 1,
+              scale: _node.isFoucsed.value ? 1.1 : 1,
               duration: const Duration(milliseconds: 200),
               child: GestureDetector(
-                onTap: onTap,
+                onTap: widget.onTap,
                 child: Container(
                   decoration: BoxDecoration(
-                    borderRadius: borderRadius,
-                    boxShadow: focusNode.isFoucsed.value
+                    borderRadius: widget.borderRadius,
+                    boxShadow: _node.isFoucsed.value
                         ? AppStyle.highlightShadow
                         : null,
-                    color: (focusNode.isFoucsed.value || selected)
-                        ? foucsedColor
-                        : color,
+                    color: (_node.isFoucsed.value || widget.selected)
+                        ? widget.foucsedColor
+                        : widget.color,
                   ),
-                  child: child,
+                  child: widget.child,
                 ),
               ),
             ),

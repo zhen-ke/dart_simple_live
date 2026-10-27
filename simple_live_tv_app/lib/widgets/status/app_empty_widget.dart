@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:simple_live_tv_app/app/app_focus_node.dart';
 import 'package:simple_live_tv_app/app/app_style.dart';
 import 'package:lottie/lottie.dart';
 import 'package:simple_live_tv_app/widgets/button/highlight_button.dart';
@@ -44,7 +43,6 @@ class AppEmptyWidget extends StatelessWidget {
                   text: "刷新",
                   iconData: Icons.refresh,
                   onTap: onRefresh,
-                  focusNode: AppFocusNode(),
                 ),
             ],
           ),

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/widgets.dart';
 import 'package:simple_live_tv_app/app/app_error.dart';
+import 'package:simple_live_tv_app/app/base_focus_model.dart';
 
 import 'package:flutter_easyrefresh/easy_refresh.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
@@ -74,6 +75,9 @@ class BasePageController<T> extends BaseController {
     // 即使上次请求还在加载，刷新也照常发起
     _requestGen++;
     currentPage = 1;
+    // 必须在清空前把旧数据项交出去释放焦点节点：
+    // 清空后 _loadPage 看到的已是空列表，旧节点会永久泄漏
+    _disposeListItemFocusNodes(list);
     list.value = [];
     await _loadPage();
   }
@@ -105,6 +109,7 @@ class BasePageController<T> extends BaseController {
       pageEmpty.value = page == 1 && result.isEmpty;
       // 赋值数据
       if (page == 1) {
+        _disposeListItemFocusNodes(list);
         list.value = List<T>.from(result);
       } else {
         list.addAll(result);
@@ -119,6 +124,20 @@ class BasePageController<T> extends BaseController {
         pageLoadding.value = false;
       }
     }
+  }
+
+  /// 列表整体替换时释放旧数据项持有的焦点节点，
+  /// 延后到帧末执行，确保旧 item 的 Focus 组件先完成卸载
+  void _disposeListItemFocusNodes(List<T> items) {
+    if (items.isEmpty) return;
+    final stale = items.toList(growable: false);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      for (var item in stale) {
+        if (item is FocusNodeOwner) {
+          item.disposeFocusNode();
+        }
+      }
+    });
   }
 
   Future<List<T>> getData(int page, int pageSize) async {
@@ -141,6 +160,11 @@ class BasePageController<T> extends BaseController {
   void onClose() {
     scrollController.dispose();
     easyRefreshController.dispose();
+    for (var item in list) {
+      if (item is FocusNodeOwner) {
+        item.disposeFocusNode();
+      }
+    }
     super.onClose();
   }
 }

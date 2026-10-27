@@ -56,6 +56,34 @@ class SettingsController extends BaseController
   var bilibiliFoucsNode = AppFocusNode();
   var douyuFoucsNode = AppFocusNode();
   var versionFocusNode = AppFocusNode();
+
+  /// 页面销毁时释放控制器持有的全部焦点节点，避免离场后仍被 Focus 树引用
+  @override
+  void onClose() {
+    tabController.dispose();
+    for (final node in [
+      hardwareDecodeFocusNode,
+      compatibleModeFocusNode,
+      scaleFoucsNode,
+      defaultQualityFocusNode,
+      danmakuFoucsNode,
+      danmakuSizeFoucsNode,
+      danmakuSpeedFoucsNode,
+      danmakuAreaFoucsNode,
+      danmakuOpacityFoucsNode,
+      danmakuStorkeFoucsNode,
+      autoUpdateFollowEnableFocusNode,
+      autoUpdateFollowDurationFocusNode,
+      updateFollowThreadFocusNode,
+      bilibiliFoucsNode,
+      douyuFoucsNode,
+      versionFocusNode,
+    ]) {
+      node.dispose();
+    }
+    super.onClose();
+  }
+
   void bilibiliTap() async {
     if (BiliBiliAccountService.instance.logined.value) {
       var result = await Utils.showAlertDialog("确定要退出哔哩哔哩账号吗？", title: "退出登录");

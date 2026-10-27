@@ -4,7 +4,6 @@ import 'package:simple_live_tv_app/routes/app_navigation.dart';
 import 'package:simple_live_tv_app/widgets/highlight_widget.dart';
 import 'package:simple_live_tv_app/widgets/net_image.dart';
 import 'package:get/get.dart';
-import 'package:simple_live_tv_app/app/app_focus_node.dart';
 import 'package:simple_live_tv_app/app/app_style.dart';
 import 'package:simple_live_tv_app/app/sites.dart';
 import 'package:simple_live_tv_app/modules/category/category_controller.dart';
@@ -25,7 +24,6 @@ class CategoryPage extends GetView<CategoryController> {
             children: [
               AppStyle.hGap48,
               HighlightButton(
-                focusNode: AppFocusNode(),
                 iconData: Icons.arrow_back,
                 text: "返回",
                 autofocus: true,
@@ -58,7 +56,6 @@ class CategoryPage extends GetView<CategoryController> {
               ),
               //  AppStyle.hGap24,
               // HighlightButton(
-              //   focusNode: AppFocusNode(),
               //   iconData: Icons.refresh,
               //   text: "刷新",
               //   onTap: () {
@@ -83,7 +80,6 @@ class CategoryPage extends GetView<CategoryController> {
                       ),
                       text: e.name,
                       selected: controller.siteId.value == e.id,
-                      focusNode: AppFocusNode(),
                       onTap: () {
                         controller.setSite(e.id);
                       },

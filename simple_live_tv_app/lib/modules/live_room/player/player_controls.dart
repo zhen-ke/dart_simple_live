@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:media_kit_video/media_kit_video.dart';
-import 'package:simple_live_tv_app/app/app_focus_node.dart';
 import 'package:simple_live_tv_app/app/app_style.dart';
 import 'package:simple_live_tv_app/app/controller/app_settings_controller.dart';
 import 'package:simple_live_tv_app/app/sites.dart';
@@ -321,16 +320,6 @@ Widget buildDanmuView(VideoState videoState, LiveRoomController controller) {
 void showPlayerSettings(LiveRoomController controller) {
   // 移除焦点
   controller.focusNode.unfocus();
-
-  var followFocusNode = AppFocusNode()..isFoucsed.value = true;
-  var qualityFoucsNode = AppFocusNode();
-  var lineFoucsNode = AppFocusNode();
-  var scaleFoucsNode = AppFocusNode();
-  var danmakuFoucsNode = AppFocusNode();
-  var danmakuSizeFoucsNode = AppFocusNode();
-  var danmakuSpeedFoucsNode = AppFocusNode();
-  var danmakuAreaFoucsNode = AppFocusNode();
-  var danmakuOpacityFoucsNode = AppFocusNode();
   Utils.showSystemRightDialog(
     width: 800.w,
     child: Column(
@@ -341,7 +330,6 @@ void showPlayerSettings(LiveRoomController controller) {
           children: [
             AppStyle.hGap48,
             HighlightButton(
-              focusNode: AppFocusNode(),
               iconData: Icons.arrow_back,
               text: "返回",
               onTap: () {
@@ -367,8 +355,7 @@ void showPlayerSettings(LiveRoomController controller) {
             children: [
               Obx(
                 () => SettingsItemWidget(
-                  foucsNode: followFocusNode,
-                  autofocus: followFocusNode.isFoucsed.value,
+                  autofocus: true,
                   title: "关注用户",
                   items: const {false: "否", true: "是"},
                   value: controller.followed.value,
@@ -399,8 +386,6 @@ void showPlayerSettings(LiveRoomController controller) {
               Obx(
                 () => SettingsItemWidget(
                   title: "清晰度",
-                  foucsNode: qualityFoucsNode,
-                  autofocus: qualityFoucsNode.isFoucsed.value,
                   items: controller.qualites
                       .asMap()
                       .map((i, e) => MapEntry(i, e.quality))
@@ -419,8 +404,6 @@ void showPlayerSettings(LiveRoomController controller) {
               Obx(
                 () => SettingsItemWidget(
                   title: "线路",
-                  foucsNode: lineFoucsNode,
-                  autofocus: lineFoucsNode.isFoucsed.value,
                   items: controller.playUrls
                       .asMap()
                       .map((i, e) => MapEntry(i, "线路${i + 1}"))
@@ -445,8 +428,6 @@ void showPlayerSettings(LiveRoomController controller) {
               AppStyle.vGap24,
               Obx(
                 () => SettingsItemWidget(
-                  foucsNode: scaleFoucsNode,
-                  autofocus: scaleFoucsNode.isFoucsed.value,
                   title: "画面比例",
                   items: const {0: "适应", 1: "拉伸", 2: "铺满", 3: "16:9", 4: "4:3"},
                   value: AppSettingsController.instance.scaleMode.value,
@@ -469,8 +450,6 @@ void showPlayerSettings(LiveRoomController controller) {
               AppStyle.vGap24,
               Obx(
                 () => SettingsItemWidget(
-                  foucsNode: danmakuFoucsNode,
-                  autofocus: danmakuFoucsNode.isFoucsed.value,
                   title: "弹幕开关",
                   items: const {0: "关", 1: "开"},
                   value: controller.showDanmakuState.value ? 1 : 0,
@@ -483,8 +462,6 @@ void showPlayerSettings(LiveRoomController controller) {
               AppStyle.vGap24,
               Obx(
                 () => SettingsItemWidget(
-                  foucsNode: danmakuSizeFoucsNode,
-                  autofocus: danmakuSizeFoucsNode.isFoucsed.value,
                   title: "弹幕大小",
                   items: {
                     24.0: "24",
@@ -509,8 +486,6 @@ void showPlayerSettings(LiveRoomController controller) {
               AppStyle.vGap24,
               Obx(
                 () => SettingsItemWidget(
-                  foucsNode: danmakuSpeedFoucsNode,
-                  autofocus: danmakuSpeedFoucsNode.isFoucsed.value,
                   title: "弹幕速度",
                   items: {
                     18.0: "很慢",
@@ -536,8 +511,6 @@ void showPlayerSettings(LiveRoomController controller) {
               AppStyle.vGap24,
               Obx(
                 () => SettingsItemWidget(
-                  foucsNode: danmakuAreaFoucsNode,
-                  autofocus: danmakuAreaFoucsNode.isFoucsed.value,
                   title: "显示区域",
                   items: {0.25: "1/4", 0.5: "1/2", 0.75: "3/4", 1.0: "全屏"},
                   value: AppSettingsController.instance.danmuArea.value,
@@ -554,8 +527,6 @@ void showPlayerSettings(LiveRoomController controller) {
               AppStyle.vGap24,
               Obx(
                 () => SettingsItemWidget(
-                  foucsNode: danmakuOpacityFoucsNode,
-                  autofocus: danmakuOpacityFoucsNode.isFoucsed.value,
                   title: "不透明度",
                   items: {
                     0.1: "10%",
@@ -614,7 +585,6 @@ void showFollowUser(LiveRoomController controller) {
           children: [
             AppStyle.hGap48,
             HighlightButton(
-              focusNode: AppFocusNode(),
               iconData: Icons.arrow_back,
               text: "返回",
               autofocus: currentIndex == 0 &&

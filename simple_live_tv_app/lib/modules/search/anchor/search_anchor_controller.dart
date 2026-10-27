@@ -1,7 +1,7 @@
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get_rx/src/rx_types/rx_types.dart';
 import 'package:simple_live_core/simple_live_core.dart';
-import 'package:simple_live_tv_app/app/app_focus_node.dart';
+import 'package:simple_live_tv_app/app/base_focus_model.dart';
 import 'package:simple_live_tv_app/app/constant.dart';
 import 'package:simple_live_tv_app/app/controller/base_controller.dart';
 import 'package:simple_live_tv_app/app/sites.dart';
@@ -53,13 +53,11 @@ class SearchAnchorController extends BasePageController<LiveAnchorItemExt> {
   }
 }
 
-class LiveAnchorItemExt extends LiveAnchorItem {
+class LiveAnchorItemExt extends LiveAnchorItem with BaseFocusModel {
   LiveAnchorItemExt({
     required super.roomId,
     required super.avatar,
     required super.liveStatus,
     required super.userName,
   });
-
-  AppFocusNode focusNode = AppFocusNode();
 }

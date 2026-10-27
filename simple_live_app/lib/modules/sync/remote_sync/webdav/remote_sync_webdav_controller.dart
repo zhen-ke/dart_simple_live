@@ -137,25 +137,30 @@ class RemoteSyncWebDAVController extends BaseController {
   // webDAV上传到云端
   Future<void> doWebDAVUpload() async {
     SmartDialog.showLoading(msg: "正在上传到云端");
-    _backupData().then((value) async {
-      SmartDialog.dismiss();
-      if (value.isNotEmpty) {
-        var result = await davClient.backup(Uint8List.fromList(value));
-        if (result) {
-          SmartDialog.showToast("上传成功");
-          DateTime uploadTime = DateTime.now();
-          lastUploadTime.value = Utils.parseTime(uploadTime);
-          LocalStorageService.instance.setValue(
-              LocalStorageService.kWebDAVLastUploadTime,
-              uploadTime.millisecondsSinceEpoch);
-        } else {
-          Log.e("备份失败", StackTrace.current);
-          SmartDialog.showToast("上传失败");
-        }
-      } else {
+    try {
+      final value = await _backupData();
+      if (value.isEmpty) {
         SmartDialog.showToast("上传失败");
+        return;
       }
-    });
+      final result = await davClient.backup(Uint8List.fromList(value));
+      if (!result) {
+        Log.e("备份失败", StackTrace.current);
+        SmartDialog.showToast("上传失败");
+        return;
+      }
+      DateTime uploadTime = DateTime.now();
+      lastUploadTime.value = Utils.parseTime(uploadTime);
+      LocalStorageService.instance.setValue(
+          LocalStorageService.kWebDAVLastUploadTime,
+          uploadTime.millisecondsSinceEpoch);
+      SmartDialog.showToast("上传成功");
+    } catch (e) {
+      Log.e("WebDAV上传失败：$e", StackTrace.current);
+      SmartDialog.showToast("上传失败：$e");
+    } finally {
+      SmartDialog.dismiss(status: SmartStatus.loading);
+    }
   }
 
   // 备份所有数据
@@ -226,23 +231,29 @@ class RemoteSyncWebDAVController extends BaseController {
   }
 
   // webDAV恢复到本地
-  void doWebDAVRecovery() async {
+  Future<void> doWebDAVRecovery() async {
     SmartDialog.showLoading(msg: "正在恢复到本地");
-    final data = await davClient.recovery();
-    final archive = await Isolate.run<Archive>(() {
-      final zipDecoder = ZipDecoder();
-      return zipDecoder.decodeBytes(data);
-    });
-    for (ArchiveFile file in archive) {
-      await _recovery(file);
+    try {
+      final data = await davClient.recovery();
+      final archive = await Isolate.run<Archive>(() {
+        final zipDecoder = ZipDecoder();
+        return zipDecoder.decodeBytes(data);
+      });
+      for (ArchiveFile file in archive) {
+        await _recovery(file);
+      }
+      SmartDialog.showToast('同步完成');
+      DateTime recoverTime = DateTime.now();
+      lastRecoverTime.value = Utils.parseTime(recoverTime);
+      LocalStorageService.instance.setValue(
+          LocalStorageService.kWebDAVLastRecoverTime,
+          recoverTime.millisecondsSinceEpoch);
+    } catch (e) {
+      Log.e("WebDAV恢复失败：$e", StackTrace.current);
+      SmartDialog.showToast("恢复失败：$e");
+    } finally {
+      SmartDialog.dismiss(status: SmartStatus.loading);
     }
-    SmartDialog.dismiss();
-    SmartDialog.showToast('同步完成');
-    DateTime recoverTime = DateTime.now();
-    lastRecoverTime.value = Utils.parseTime(recoverTime);
-    LocalStorageService.instance.setValue(
-        LocalStorageService.kWebDAVLastRecoverTime,
-        recoverTime.millisecondsSinceEpoch);
   }
 
   Future<void> _recovery(ArchiveFile file) async {

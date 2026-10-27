@@ -5,11 +5,12 @@ import 'package:simple_live_tv_app/app/app_focus_node.dart';
 import 'package:simple_live_tv_app/app/app_style.dart';
 import 'package:simple_live_tv_app/widgets/highlight_widget.dart';
 
-class HighlightButton extends StatelessWidget {
+/// [focusNode] 可选：不传时内部创建并自管理生命周期
+class HighlightButton extends StatefulWidget {
   final String text;
   final IconData? iconData;
   final Widget? icon;
-  final AppFocusNode focusNode;
+  final AppFocusNode? focusNode;
   final Function()? onTap;
   final bool autofocus;
   final bool selected;
@@ -18,21 +19,30 @@ class HighlightButton extends StatelessWidget {
     required this.text,
     this.icon,
     this.onTap,
-    required this.focusNode,
+    this.focusNode,
     this.autofocus = false,
     this.selected = false,
     super.key,
   });
+
+  @override
+  State<HighlightButton> createState() => _HighlightButtonState();
+}
+
+class _HighlightButtonState extends State<HighlightButton>
+    with ManagedAppFocusNode<HighlightButton> {
+  AppFocusNode get _node => resolveFocusNode(widget.focusNode);
+
   @override
   Widget build(BuildContext context) {
     return Obx(
       () => HighlightWidget(
-        focusNode: focusNode,
+        focusNode: _node,
         borderRadius: AppStyle.radius32,
         color: Colors.white10,
-        onTap: onTap,
-        autofocus: autofocus,
-        selected: selected,
+        onTap: widget.onTap,
+        autofocus: widget.autofocus,
+        selected: widget.selected,
         child: Container(
           height: 64.w,
           //width: 64.w,
@@ -46,10 +56,10 @@ class HighlightButton extends StatelessWidget {
             children: [
               buildIcon(),
               Text(
-                text,
+                widget.text,
                 style: TextStyle(
                   fontSize: 28.w,
-                  color: (focusNode.isFoucsed.value || selected)
+                  color: (_node.isFoucsed.value || widget.selected)
                       ? Colors.black
                       : Colors.white,
                 ),
@@ -62,14 +72,14 @@ class HighlightButton extends StatelessWidget {
   }
 
   Widget buildIcon() {
-    if (icon != null || iconData != null) {
+    if (widget.icon != null || widget.iconData != null) {
       return Padding(
         padding: AppStyle.edgeInsetsR12,
-        child: icon ??
+        child: widget.icon ??
             Icon(
-              iconData,
+              widget.iconData,
               size: 40.w,
-              color: (focusNode.isFoucsed.value || selected)
+              color: (_node.isFoucsed.value || widget.selected)
                   ? Colors.black
                   : Colors.white,
             ),

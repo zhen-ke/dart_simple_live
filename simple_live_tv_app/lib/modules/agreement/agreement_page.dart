@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
-import 'package:simple_live_tv_app/app/app_focus_node.dart';
 import 'package:simple_live_tv_app/app/app_style.dart';
 import 'package:simple_live_tv_app/app/controller/app_settings_controller.dart';
 import 'package:simple_live_tv_app/routes/route_path.dart';
@@ -65,7 +64,6 @@ class AgreementPage extends StatelessWidget {
                   HighlightButton(
                     text: "已阅读并同意",
                     autofocus: true,
-                    focusNode: AppFocusNode(),
                     onTap: () {
                       AppSettingsController.instance.setNoFirstRun();
                       Get.offAllNamed(RoutePath.kHome);
@@ -74,7 +72,6 @@ class AgreementPage extends StatelessWidget {
                   AppStyle.hGap32,
                   HighlightButton(
                     text: "退出应用",
-                    focusNode: AppFocusNode(),
                     onTap: () {
                       //退出软件
                       exit(0);

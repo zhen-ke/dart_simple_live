@@ -5,15 +5,16 @@ import 'package:simple_live_tv_app/app/app_focus_node.dart';
 import 'package:simple_live_tv_app/app/app_style.dart';
 import 'package:simple_live_tv_app/widgets/highlight_widget.dart';
 
-class SettingsItemWidget extends StatelessWidget {
-  final AppFocusNode foucsNode;
+/// [foucsNode] 可选：不传时内部创建并自管理生命周期
+class SettingsItemWidget extends StatefulWidget {
+  final AppFocusNode? foucsNode;
   final Map<dynamic, String> items;
   final dynamic value;
   final String title;
   final bool autofocus;
   final Function(dynamic) onChanged;
   const SettingsItemWidget({
-    required this.foucsNode,
+    this.foucsNode,
     required this.items,
     required this.value,
     required this.title,
@@ -23,28 +24,36 @@ class SettingsItemWidget extends StatelessWidget {
   });
 
   @override
+  State<SettingsItemWidget> createState() => _SettingsItemWidgetState();
+}
+
+class _SettingsItemWidgetState extends State<SettingsItemWidget>
+    with ManagedAppFocusNode<SettingsItemWidget> {
+  AppFocusNode get _node => resolveFocusNode(widget.foucsNode);
+
+  @override
   Widget build(BuildContext context) {
     return HighlightWidget(
-      focusNode: foucsNode,
-      autofocus: autofocus,
+      focusNode: _node,
+      autofocus: widget.autofocus,
       borderRadius: AppStyle.radius16,
       onLeftKey: () {
-        if (items.isEmpty) return KeyEventResult.handled;
-        if (items.keys.first == value) {
-          onChanged(items.keys.last);
+        if (widget.items.isEmpty) return KeyEventResult.handled;
+        if (widget.items.keys.first == widget.value) {
+          widget.onChanged(widget.items.keys.last);
         } else {
-          onChanged(
-              items.keys.elementAt(items.keys.toList().indexOf(value) - 1));
+          widget.onChanged(widget.items.keys
+              .elementAt(widget.items.keys.toList().indexOf(widget.value) - 1));
         }
         return KeyEventResult.handled;
       },
       onRightKey: () {
-        if (items.isEmpty) return KeyEventResult.handled;
-        if (items.keys.last == value) {
-          onChanged(items.keys.first);
+        if (widget.items.isEmpty) return KeyEventResult.handled;
+        if (widget.items.keys.last == widget.value) {
+          widget.onChanged(widget.items.keys.first);
         } else {
-          onChanged(
-              items.keys.elementAt(items.keys.toList().indexOf(value) + 1));
+          widget.onChanged(widget.items.keys
+              .elementAt(widget.items.keys.toList().indexOf(widget.value) + 1));
         }
         return KeyEventResult.handled;
       },
@@ -57,39 +66,37 @@ class SettingsItemWidget extends StatelessWidget {
           child: Row(
             children: [
               Text(
-                title,
-                style: foucsNode.isFoucsed.value
+                widget.title,
+                style: _node.isFoucsed.value
                     ? AppStyle.textStyleBlack
                     : AppStyle.textStyleWhite,
               ),
               const Spacer(),
-              if (foucsNode.isFoucsed.value && items.isNotEmpty)
+              if (_node.isFoucsed.value && widget.items.isNotEmpty)
                 Icon(
                   Icons.chevron_left,
                   size: 40.w,
-                  color:
-                      foucsNode.isFoucsed.value ? Colors.black : Colors.white,
+                  color: _node.isFoucsed.value ? Colors.black : Colors.white,
                 ),
               AppStyle.hGap12,
               ConstrainedBox(
                 constraints: BoxConstraints(minWidth: 120.w),
                 child: Text(
-                  items[value] ?? '',
-                  style: foucsNode.isFoucsed.value
+                  widget.items[widget.value] ?? '',
+                  style: _node.isFoucsed.value
                       ? AppStyle.textStyleBlack
                       : AppStyle.textStyleWhite,
-                  textAlign: foucsNode.isFoucsed.value
+                  textAlign: _node.isFoucsed.value
                       ? TextAlign.center
                       : TextAlign.right,
                 ),
               ),
               AppStyle.hGap12,
-              if (foucsNode.isFoucsed.value && items.isNotEmpty)
+              if (_node.isFoucsed.value && widget.items.isNotEmpty)
                 Icon(
                   Icons.chevron_right,
                   size: 40.w,
-                  color:
-                      foucsNode.isFoucsed.value ? Colors.black : Colors.white,
+                  color: _node.isFoucsed.value ? Colors.black : Colors.white,
                 ),
             ],
           ),
@@ -103,21 +110,21 @@ class SettingsItemWidget extends StatelessWidget {
       AlertDialog(
         backgroundColor: Get.theme.cardColor,
         surfaceTintColor: Colors.transparent,
-        title: Text(title, style: AppStyle.titleStyleWhite),
+        title: Text(widget.title, style: AppStyle.titleStyleWhite),
         scrollable: true,
         content: Column(
           mainAxisSize: MainAxisSize.min,
-          children: items.keys.map((e) {
+          children: widget.items.keys.map((e) {
             return ListTile(
-              title: Text(items[e] ?? '', style: AppStyle.textStyleWhite),
+              title: Text(widget.items[e] ?? '', style: AppStyle.textStyleWhite),
               contentPadding: AppStyle.edgeInsetsH20,
-              autofocus: e == value,
+              autofocus: e == widget.value,
               shape: RoundedRectangleBorder(
                 borderRadius: AppStyle.radius16,
               ),
               focusColor: Colors.white54,
               onTap: () {
-                onChanged(e);
+                widget.onChanged(e);
                 Get.back();
               },
             );

@@ -42,7 +42,7 @@ class DAVClient {
 
   get backupFile => "$root/backup.zip";
 
-  backup(Uint8List data) async {
+  Future<bool> backup(Uint8List data) async {
     await client.mkdir("$root");
     await client.write("$backupFile", data);
     return true;

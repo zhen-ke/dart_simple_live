@@ -5,12 +5,13 @@ import 'package:simple_live_tv_app/app/app_focus_node.dart';
 import 'package:simple_live_tv_app/app/app_style.dart';
 import 'package:simple_live_tv_app/widgets/highlight_widget.dart';
 
-class HighlightListTile extends StatelessWidget {
+/// [focusNode] 可选：不传时内部创建并自管理生命周期
+class HighlightListTile extends StatefulWidget {
   final String title;
   final String? subtitle;
   final Widget? leading;
   final Widget? trailing;
-  final AppFocusNode focusNode;
+  final AppFocusNode? focusNode;
   final Function()? onTap;
   final bool autofocus;
 
@@ -19,46 +20,55 @@ class HighlightListTile extends StatelessWidget {
     required this.title,
     this.leading,
     this.onTap,
-    required this.focusNode,
+    this.focusNode,
     this.autofocus = false,
     this.trailing,
     super.key,
   });
 
   @override
+  State<HighlightListTile> createState() => _HighlightListTileState();
+}
+
+class _HighlightListTileState extends State<HighlightListTile>
+    with ManagedAppFocusNode<HighlightListTile> {
+  AppFocusNode get _node => resolveFocusNode(widget.focusNode);
+
+  @override
   Widget build(BuildContext context) {
     return Obx(
       () => IconTheme(
         data: IconThemeData(
-          color: focusNode.isFoucsed.value ? Colors.black : Colors.white,
+          color: _node.isFoucsed.value ? Colors.black : Colors.white,
         ),
         child: HighlightWidget(
-          onTap: onTap,
-          autofocus: autofocus,
-          focusNode: focusNode,
+          onTap: widget.onTap,
+          autofocus: widget.autofocus,
+          focusNode: _node,
           borderRadius: AppStyle.radius16,
           child: Padding(
             padding: AppStyle.edgeInsetsA24,
             child: Row(
               children: [
-                if (leading != null) leading!,
-                if (leading != null) AppStyle.hGap32,
+                if (widget.leading != null) widget.leading!,
+                if (widget.leading != null) AppStyle.hGap32,
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
-                        title,
-                        style: focusNode.isFoucsed.value
+                        widget.title,
+                        style: _node.isFoucsed.value
                             ? AppStyle.textStyleBlack
                             : AppStyle.textStyleWhite,
                       ),
-                      if (subtitle != null)
+                      if (widget.subtitle != null)
                         Text(
-                          subtitle!,
-                          style: focusNode.isFoucsed.value
-                              ? AppStyle.textStyleBlack.copyWith(fontSize: 24.w)
+                          widget.subtitle!,
+                          style: _node.isFoucsed.value
+                              ? AppStyle.textStyleBlack
+                                  .copyWith(fontSize: 24.w)
                               : AppStyle.textStyleWhite
                                   .copyWith(fontSize: 24.w),
                         ),
@@ -66,16 +76,15 @@ class HighlightListTile extends StatelessWidget {
                   ),
                 ),
                 AppStyle.hGap12,
-                if (onTap != null &&
-                    focusNode.isFoucsed.value &&
-                    trailing == null)
+                if (widget.onTap != null &&
+                    _node.isFoucsed.value &&
+                    widget.trailing == null)
                   Icon(
                     Icons.chevron_right,
                     size: 40.w,
-                    color:
-                        focusNode.isFoucsed.value ? Colors.black : Colors.white,
+                    color: _node.isFoucsed.value ? Colors.black : Colors.white,
                   ),
-                if (trailing != null) trailing!,
+                if (widget.trailing != null) widget.trailing!,
               ],
             ),
           ),

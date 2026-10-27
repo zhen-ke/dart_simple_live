@@ -839,6 +839,8 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
 
     danmakuController = null;
     clearMemoryImageCache();
+    // 页面级焦点节点随控制器一起释放，否则每次进出直播间都会漏一个
+    focusNode.dispose();
     super.onClose();
   }
 }

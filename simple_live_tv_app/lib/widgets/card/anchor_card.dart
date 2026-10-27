@@ -8,7 +8,8 @@ import 'package:simple_live_tv_app/routes/app_navigation.dart';
 import 'package:simple_live_tv_app/widgets/highlight_widget.dart';
 import 'package:simple_live_tv_app/widgets/net_image.dart';
 
-class AnchorCard extends StatelessWidget {
+/// [focusNode] 可选：不传时内部创建并自管理生命周期
+class AnchorCard extends StatefulWidget {
   final String siteId;
   final String face;
   final String name;
@@ -30,17 +31,25 @@ class AnchorCard extends StatelessWidget {
   });
 
   @override
+  State<AnchorCard> createState() => _AnchorCardState();
+}
+
+class _AnchorCardState extends State<AnchorCard>
+    with ManagedAppFocusNode<AnchorCard> {
+  AppFocusNode get _node => resolveFocusNode(widget.focusNode);
+
+  @override
   Widget build(BuildContext context) {
-    var site = Sites.allSites[siteId]!;
-    var focusNode = this.focusNode ?? AppFocusNode();
+    var site = Sites.allSites[widget.siteId]!;
     return Obx(
       () => HighlightWidget(
-        onTap: onTap ??
+        onTap: widget.onTap ??
             () {
-              AppNavigator.toLiveRoomDetail(site: site, roomId: roomId);
+              AppNavigator.toLiveRoomDetail(
+                  site: site, roomId: widget.roomId);
             },
-        focusNode: focusNode,
-        autofocus: autofocus,
+        focusNode: _node,
+        autofocus: widget.autofocus,
         borderRadius: AppStyle.radius16,
         color: Colors.white10,
         child: Stack(
@@ -51,7 +60,7 @@ class AnchorCard extends StatelessWidget {
                 mainAxisSize: MainAxisSize.max,
                 children: [
                   NetImage(
-                    face,
+                    widget.face,
                     width: 100.w,
                     height: 100.w,
                     borderRadius: 100.w,
@@ -63,11 +72,11 @@ class AnchorCard extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         Text(
-                          name,
+                          widget.name,
                           style: TextStyle(
                             fontSize: 36.w,
                             overflow: TextOverflow.ellipsis,
-                            color: focusNode.isFoucsed.value
+                            color: _node.isFoucsed.value
                                 ? Colors.black
                                 : Colors.white,
                           ),
@@ -88,7 +97,7 @@ class AnchorCard extends StatelessWidget {
                           ),
                           style: TextStyle(
                             fontSize: 24.w,
-                            color: focusNode.isFoucsed.value
+                            color: _node.isFoucsed.value
                                 ? Colors.black
                                 : Colors.white,
                           ),
@@ -99,7 +108,7 @@ class AnchorCard extends StatelessWidget {
                 ],
               ),
             ),
-            if (liveStatus == 2)
+            if (widget.liveStatus == 2)
               Positioned(
                 right: 0,
                 top: 0,
