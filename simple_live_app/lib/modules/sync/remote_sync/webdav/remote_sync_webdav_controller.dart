@@ -230,36 +230,21 @@ class RemoteSyncWebDAVController extends BaseController {
       if (file.name == _userFollowJsonName && isSyncFollows.value) {
         // 当前云优先
         try {
-          // 清空本地关注列表
-          await DBService.instance.followBox.clear();
-          final users = <String, FollowUser>{};
-          for (var item in jsonData) {
-            var user = FollowUser.fromJson(item);
-            users[user.id] = user;
-          }
-          if (users.isNotEmpty) {
-            await DBService.instance.followBox.putAll(users);
-          }
+          // 先解析再交给 DBService 覆盖：解析失败时本地数据保持原样
+          final users = (jsonData as List)
+              .map((item) => FollowUser.fromJson(item))
+              .toList();
+          await DBService.instance.mergeFollows(users, overlay: true);
           Log.i('已同步关注用户列表');
         } catch (e) {
           Log.e('同步关注用户列表失败: $e', StackTrace.current);
         }
       } else if (file.name == _userHistoriesJsonName && isSyncHistories.value) {
         try {
-          // 先在内存里比完新旧，再一次性 putAll
-          final merged = <String, History>{};
-          for (var item in jsonData) {
-            var history = History.fromJson(item);
-            var old = DBService.instance.historyBox.get(history.id);
-            //如果本地的更新时间比较新，就不更新
-            if (old is History && old.updateTime.isAfter(history.updateTime)) {
-              continue;
-            }
-            merged[history.id] = history;
-          }
-          if (merged.isNotEmpty) {
-            await DBService.instance.historyBox.putAll(merged);
-          }
+          final histories = (jsonData as List)
+              .map((item) => History.fromJson(item))
+              .toList();
+          await DBService.instance.mergeHistories(histories);
           Log.i('已同步用户观看历史记录');
         } catch (e) {
           Log.e('同步用户观看历史记录失败: $e', StackTrace.current);
@@ -294,17 +279,17 @@ class RemoteSyncWebDAVController extends BaseController {
         }
       } else if (file.name == _userTagsJsonName && isSyncFollows.value) {
         try {
-          // 标签功能和关注具有依赖关系，必须同时同步
-          // 清空本地标签列表
-          await DBService.instance.tagBox.clear();
-          final tags = <String, FollowUserTag>{};
-          for (var item in jsonData) {
-            var tag = FollowUserTag.fromJson(item);
-            tags[tag.id] = tag;
-          }
-          if (tags.isNotEmpty) {
-            await DBService.instance.tagBox.putAll(tags);
-          }
+          // 标签功能和关注具有依赖关系，必须同时同步。
+          // 备份文件是按展示顺序导出的，恢复时据此重建顺序表，
+          // 否则标签顺序会退回 Hive 的键序（历史版本丢过顺序）
+          final tags = (jsonData as List)
+              .map((item) => FollowUserTag.fromJson(item))
+              .toList();
+          await DBService.instance.mergeTags(
+            tags,
+            overlay: true,
+            ordered: true,
+          );
           EventBus.instance.emit(Constant.kUpdateFollow, 0);
           Log.i('已同步用户自定义标签');
         } catch (e) {

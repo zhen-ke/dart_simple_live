@@ -113,13 +113,11 @@ class SyncController extends BaseController {
   void onReceiveFavorite(bool overlay, String data) async {
     try {
       var jsonBody = json.decode(data);
-      if (overlay) {
-        await DBService.instance.followBox.clear();
-      }
-      for (var item in jsonBody) {
-        var user = FollowUser.fromJson(item);
-        await DBService.instance.followBox.put(user.id, user);
-      }
+      // 先解析成实体再交给 DBService：解析失败不会清空本地数据
+      final users = (jsonBody as List)
+          .map((item) => FollowUser.fromJson(item))
+          .toList();
+      await DBService.instance.mergeFollows(users, overlay: overlay);
       SmartDialog.showToast('已同步关注用户列表');
       EventBus.instance.emit(Constant.kUpdateFollow, 0);
       SmartDialog.showToast("已同步关注列表");
@@ -132,20 +130,10 @@ class SyncController extends BaseController {
   void onReceiveHistory(bool overlay, String data) async {
     try {
       var jsonBody = json.decode(data);
-      if (overlay) {
-        await DBService.instance.historyBox.clear();
-      }
-      for (var item in jsonBody) {
-        var history = History.fromJson(item);
-        if (DBService.instance.historyBox.containsKey(history.id)) {
-          var old = DBService.instance.historyBox.get(history.id);
-          //如果本地的更新时间比较新，就不更新
-          if (old!.updateTime.isAfter(history.updateTime)) {
-            continue;
-          }
-        }
-        await DBService.instance.addOrUpdateHistory(history);
-      }
+      final histories = (jsonBody as List)
+          .map((item) => History.fromJson(item))
+          .toList();
+      await DBService.instance.mergeHistories(histories, overlay: overlay);
       SmartDialog.showToast('已同步历史记录');
       EventBus.instance.emit(Constant.kUpdateHistory, 0);
     } catch (e) {

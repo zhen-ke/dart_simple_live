@@ -3,7 +3,7 @@ version: 1.11.4+11104
 publish_to: none
 description: "Simple Live APP"
 environment:
-  sdk: ">=3.0.5 <4.0.0"
+  sdk: ">=3.10.0 <4.0.0"
 
 dependencies:
   simple_live_core:
@@ -69,8 +69,9 @@ dependencies:
   signalr_netcore: ^1.4.4 #SignalR
 
   # 视频播放
-  media_kit: ^1.2.2
-  media_kit_video: ^2.0.0
+  # 2.0.1 修复了 Flutter 3.38.x 的崩溃，与 TV 端保持一致
+  media_kit: ^1.2.3
+  media_kit_video: ^2.0.1
   media_kit_libs_video: ^1.0.7
 
   flutter:
@@ -80,7 +81,7 @@ dependencies:
 
 
 dev_dependencies:
-  flutter_lints: ^2.0.0
+  flutter_lints: ^6.0.0
   build_runner: ^2.3.3
   hive_generator: ^2.0.0
   flutter_launcher_icons: ^0.13.1

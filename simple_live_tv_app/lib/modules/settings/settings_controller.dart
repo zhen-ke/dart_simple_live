@@ -42,6 +42,8 @@ class SettingsController extends BaseController
   var compatibleModeFocusNode = AppFocusNode();
   var scaleFoucsNode = AppFocusNode();
   var defaultQualityFocusNode = AppFocusNode();
+  var lineStrategyFocusNode = AppFocusNode();
+  var forceHttpsFocusNode = AppFocusNode();
   var danmakuFoucsNode = AppFocusNode();
   var danmakuSizeFoucsNode = AppFocusNode();
   var danmakuSpeedFoucsNode = AppFocusNode();
@@ -66,6 +68,8 @@ class SettingsController extends BaseController
       compatibleModeFocusNode,
       scaleFoucsNode,
       defaultQualityFocusNode,
+      lineStrategyFocusNode,
+      forceHttpsFocusNode,
       danmakuFoucsNode,
       danmakuSizeFoucsNode,
       danmakuSpeedFoucsNode,

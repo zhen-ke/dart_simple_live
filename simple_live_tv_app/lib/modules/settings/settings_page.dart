@@ -199,6 +199,39 @@ class SettingsPage extends GetView<SettingsController> {
             },
           ),
         ),
+        AppStyle.vGap24,
+        Obx(
+          () => SettingsItemWidget(
+            foucsNode: controller.lineStrategyFocusNode,
+            autofocus: controller.lineStrategyFocusNode.isFoucsed.value,
+            title: "线路策略",
+            items: const {
+              0: "低延迟优先(FLV)",
+              1: "稳定优先(HLS)",
+            },
+            value: AppSettingsController.instance.playerLineStrategy.value,
+            onChanged: (e) {
+              AppSettingsController.instance.setPlayerLineStrategy(e);
+            },
+          ),
+        ),
+        AppStyle.vGap24,
+        Obx(
+          () => SettingsItemWidget(
+            foucsNode: controller.forceHttpsFocusNode,
+            autofocus: controller.forceHttpsFocusNode.isFoucsed.value,
+            title: "强制 HTTPS",
+            items: const {
+              0: "关",
+              1: "开",
+            },
+            value:
+                AppSettingsController.instance.playerForceHttps.value ? 1 : 0,
+            onChanged: (e) {
+              AppSettingsController.instance.setPlayerForceHttps(e == 1);
+            },
+          ),
+        ),
       ],
     );
   }

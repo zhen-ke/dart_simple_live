@@ -378,14 +378,7 @@ class SyncService extends GetxService {
       for (var item in jsonBody) {
         users.add(FollowUser.fromJson(item));
       }
-      if (overlay == 1) {
-        await DBService.instance.followBox.clear();
-      }
-      // 批量写入：逐条 await put 每条都会单独落盘
-      if (users.isNotEmpty) {
-        await DBService.instance.followBox
-            .putAll({for (var user in users) user.id: user});
-      }
+      await DBService.instance.mergeFollows(users, overlay: overlay == 1);
 
       SmartDialog.showToast('已同步关注用户列表');
       EventBus.instance.emit(Constant.kUpdateFollow, 0);
@@ -414,13 +407,7 @@ class SyncService extends GetxService {
       for (var item in jsonBody) {
         tags.add(FollowUserTag.fromJson(item));
       }
-      if (overlay == 1) {
-        await DBService.instance.tagBox.clear();
-      }
-      if (tags.isNotEmpty) {
-        await DBService.instance.tagBox
-            .putAll({for (var tag in tags) tag.id: tag});
-      }
+      await DBService.instance.mergeTags(tags, overlay: overlay == 1);
 
       SmartDialog.showToast('已同步标签列表');
       EventBus.instance.emit(Constant.kUpdateFollow, 0);
@@ -448,22 +435,11 @@ class SyncService extends GetxService {
       for (var item in jsonBody) {
         histories.add(History.fromJson(item));
       }
-      if (overlay == 1) {
-        await DBService.instance.historyBox.clear();
-      }
-      // 先在内存里比完新旧，再一次性 putAll
-      final merged = <String, History>{};
-      for (var history in histories) {
-        var old = DBService.instance.historyBox.get(history.id);
-        //如果本地的更新时间比较新，就不更新
-        if (old is History && old.updateTime.isAfter(history.updateTime)) {
-          continue;
-        }
-        merged[history.id] = history;
-      }
-      if (merged.isNotEmpty) {
-        await DBService.instance.historyBox.putAll(merged);
-      }
+      // 先在内存里比完新旧，再一次性落盘（见 DBService.mergeHistories）
+      await DBService.instance.mergeHistories(
+        histories,
+        overlay: overlay == 1,
+      );
 
       SmartDialog.showToast('已同步观看记录');
       EventBus.instance.emit(Constant.kUpdateHistory, 0);

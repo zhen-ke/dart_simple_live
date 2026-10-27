@@ -26,6 +26,12 @@ import 'package:simple_live_tv_app/services/sync_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // 限制图片缓存数量与内存占用（最多缓存200张或50MB）。
+  // TV 端封面/头像更密集且可用内存更小，不设上限时容易把内存顶高
+  PaintingBinding.instance.imageCache.maximumSize = 200;
+  PaintingBinding.instance.imageCache.maximumSizeBytes = 50 * 1024 * 1024;
+
   MediaKit.ensureInitialized();
   await Hive.initFlutter();
   //初始化服务

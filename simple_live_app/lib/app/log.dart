@@ -45,7 +45,7 @@ class Log {
       }
     } catch (e) {
       if (kDebugMode) {
-        print(e);
+        debugPrint(e.toString());
       }
     }
   }
@@ -102,7 +102,7 @@ class Log {
     }
     //logger.e(obj.toString(), obj, obj?.stackTrace);
     if (kDebugMode) {
-      print(obj);
+      debugPrint(obj.toString());
     }
   }
 

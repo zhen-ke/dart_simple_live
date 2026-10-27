@@ -131,6 +131,92 @@ class DBService extends GetxService {
     await historyBox.put(history.id, history);
   }
 
+  // ---------------------------------------------------------------------------
+  // 同步合并：局域网同步、WebDAV 恢复、房间同步三条链路共用这一处实现。
+  //
+  // 入参一律是**已经解析完成的实体列表**，不是原始 JSON。解析在调用方完成，
+  // 解析失败时根本走不到这里，因此不存在"先清空再解析、解析炸了本地数据没了"
+  // 的窗口——这个 bug 在 WebDAV 恢复里真实存在过。
+  //
+  // [overlay] 为 true 表示云端/对端数据覆盖本地；false 表示按 id 合并。
+  // ---------------------------------------------------------------------------
+
+  /// 合并关注列表。
+  /// 关注没有更新时间字段，同 id 一律以传入值为准（后写覆盖）。
+  Future<void> mergeFollows(
+    List<FollowUser> items, {
+    bool overlay = false,
+  }) async {
+    if (overlay) {
+      await followBox.clear();
+    }
+    if (items.isEmpty) {
+      return;
+    }
+    // 一次 putAll 落盘：逐条 await put 每条都会触发一次写入
+    await followBox.putAll({for (final item in items) item.id: item});
+  }
+
+  /// 合并标签。
+  /// 标签展示顺序独立存在 [tagOrderBox]，不跟随实体主键：
+  /// * [ordered] 为 true 时按入参顺序重建顺序表（备份文件本身就是按序导出的）
+  /// * 否则保留本地既有顺序，只裁掉已被删除的标签 id
+  Future<void> mergeTags(
+    List<FollowUserTag> items, {
+    bool overlay = false,
+    bool ordered = false,
+  }) async {
+    if (overlay) {
+      await tagBox.clear();
+    }
+    if (items.isNotEmpty) {
+      await tagBox.putAll({for (final item in items) item.id: item});
+    }
+    if (ordered) {
+      await updateFollowTagOrder(items);
+    } else {
+      await _pruneTagOrder();
+    }
+  }
+
+  /// 合并观看记录：同 id 只接受更新的 updateTime，避免旧备份回滚进度。
+  Future<void> mergeHistories(
+    List<History> items, {
+    bool overlay = false,
+  }) async {
+    // 先在内存里比完新旧，再一次性落盘
+    final merged = <String, History>{};
+    for (final item in items) {
+      if (!overlay) {
+        final old = historyBox.get(item.id);
+        // 本地更新时间比较新，保留本地
+        if (old is History && old.updateTime.isAfter(item.updateTime)) {
+          continue;
+        }
+      }
+      merged[item.id] = item;
+    }
+    if (overlay) {
+      await historyBox.clear();
+    }
+    if (merged.isNotEmpty) {
+      await historyBox.putAll(merged);
+    }
+  }
+
+  /// 裁掉顺序表里已不存在的标签 id，保持相对顺序不变。
+  Future<void> _pruneTagOrder() async {
+    final raw = tagOrderBox.get('order');
+    if (raw is! List) {
+      return;
+    }
+    final alive = tagBox.keys.map((e) => e.toString()).toSet();
+    final kept = raw.cast<String>().where(alive.contains).toList();
+    if (kept.length != raw.length) {
+      await tagOrderBox.put('order', kept);
+    }
+  }
+
   List<History> getHistores() {
     var his = historyBox.values.toList();
     his.sort((a, b) => b.updateTime.compareTo(a.updateTime));

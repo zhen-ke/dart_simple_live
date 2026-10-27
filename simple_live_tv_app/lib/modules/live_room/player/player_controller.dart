@@ -39,6 +39,10 @@ mixin PlayerMixin {
       // 比 setProperty 更可靠（参见 media_kit #549）。
       bufferSize:
           AppSettingsController.instance.playerBufferSize.value * 1024 * 1024,
+      // mpv 日志门槛：release 只保留 error。
+      // TV 端没有日志查看页也没有文件写入，info 级日志对用户无价值，
+      // 只会在电视盒子上持续产生字符串分配和平台通道开销。
+      logLevel: kDebugMode ? MPVLogLevel.info : MPVLogLevel.error,
     ),
   );
 

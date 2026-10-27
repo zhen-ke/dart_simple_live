@@ -362,6 +362,49 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     }
   }
 
+  /// 线路类型优先级：数字越小越靠前，未知类型排最后。
+  int _streamTypePriority(String url, bool preferHls) {
+    final lower = url.toLowerCase();
+    final isFlv = lower.contains('.flv');
+    final isHls = lower.contains('.m3u8');
+
+    if (preferHls) {
+      if (isHls) return 0;
+      if (isFlv) return 1;
+    } else {
+      if (isFlv) return 0;
+      if (isHls) return 1;
+    }
+    return 2;
+  }
+
+  /// 按线路策略排序候选地址。
+  /// 同类型保持服务端返回的原始顺序（通常已按就近节点排好），
+  /// 只做稳定排序，不重排同优先级内的相对次序。
+  List<String> _reorderPlayUrlsByStrategy(List<String> urls) {
+    final preferHls =
+        AppSettingsController.instance.playerLineStrategy.value == 1;
+    final entries = urls.asMap().entries.toList();
+    entries.sort((a, b) {
+      final pa = _streamTypePriority(a.value, preferHls);
+      final pb = _streamTypePriority(b.value, preferHls);
+      if (pa != pb) {
+        return pa - pb;
+      }
+      return a.key - b.key;
+    });
+    return entries.map((entry) => entry.value).toList();
+  }
+
+  /// 强制 HTTPS：部分网络会拦截明文直播流。
+  /// 只改写协议头，避免误伤 query 里出现的 "http://"
+  String _resolvePlayUrl(String url) {
+    if (!AppSettingsController.instance.playerForceHttps.value) {
+      return url;
+    }
+    return url.replaceFirst('http://', 'https://');
+  }
+
   /// 取流并重建播放列表，返回是否成功。
   /// 取流失败时保留旧线路，供断流重试兜底。
   Future<bool> getPlayUrl() async {
@@ -387,7 +430,7 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
       currentQualityInfo.value = quality.quality;
       currentLineInfo.value = "";
       currentLineIndex = -1;
-      playUrls.value = playUrl.urls;
+      playUrls.value = _reorderPlayUrlsByStrategy(playUrl.urls);
       playHeaders = playUrl.headers;
       currentLineIndex = 0;
       currentLineInfo.value = "线路${currentLineIndex + 1}";
@@ -433,14 +476,15 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
       // 按当前线路的实际流类型校正 cache-secs（FLV/HLS 预读不同）
       await applyDemuxerCacheSecsFor(playUrls[currentLineIndex]);
       _openIssuedAt = DateTime.now();
+      final playUrl = _resolvePlayUrl(playUrls[currentLineIndex]);
       player.open(
         Media(
-          playUrls[currentLineIndex],
+          playUrl,
           httpHeaders: playHeaders,
         ),
       );
 
-      Log.d("播放链接\r\n：${playUrls[currentLineIndex]}");
+      Log.d("播放链接\r\n：$playUrl");
     } catch (e) {
       // setPlayer 多以 unawaited 方式调用，错误必须就地消化
       Log.logPrint(e);

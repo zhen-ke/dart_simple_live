@@ -96,6 +96,14 @@ class LocalStorageService extends GetxService {
   /// 播放器缓冲区大小
   static const String kPlayerBufferSize = "PlayerBufferSize";
 
+  /// 播放线路策略
+  /// * [0] 低延迟优先（FLV）
+  /// * [1] 稳定优先（HLS）
+  static const String kPlayerLineStrategy = "PlayerLineStrategy";
+
+  /// 强制 HTTPS：部分网络下 http 直播源会被拦截，开启后统一改写协议
+  static const String kPlayerForceHttps = "PlayerForceHttps";
+
   /// 自动全屏
   static const String kAutoFullScreen = "AutoFullScreen";
 

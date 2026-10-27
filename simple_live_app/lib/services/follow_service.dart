@@ -490,13 +490,10 @@ class FollowService extends GetxService {
       }
     }
 
-    if (tags.isNotEmpty) {
-      await DBService.instance.tagBox
-          .putAll({for (var tag in tags.values) tag.id: tag});
-    }
-    if (follows.isNotEmpty) {
-      await DBService.instance.followBox.putAll(follows);
-    }
+    // 导入与同步共用 DBService 的合并实现：
+    // 标签顺序保持本地既有顺序，只补入新标签
+    await DBService.instance.mergeTags(tags.values.toList());
+    await DBService.instance.mergeFollows(follows.values.toList());
   }
 
   @override

@@ -744,8 +744,9 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
   List<Media> _buildMediaList() {
     final forceHttps = AppSettingsController.instance.playerForceHttps.value;
     return playUrls.map((url) {
+      // 只改写协议头，避免误伤 query 里出现的 "http://"
       final finalUrl =
-          forceHttps ? url.replaceAll("http://", "https://") : url;
+          forceHttps ? url.replaceFirst("http://", "https://") : url;
       return Media(finalUrl, httpHeaders: playHeaders);
     }).toList();
   }

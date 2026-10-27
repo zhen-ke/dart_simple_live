@@ -93,6 +93,12 @@ class AppSettingsController extends GetxController {
         .clamp(4, 128)
         .toInt();
 
+    playerLineStrategy.value = LocalStorageService.instance
+        .getValue(LocalStorageService.kPlayerLineStrategy, 0);
+
+    playerForceHttps.value = LocalStorageService.instance
+        .getValue(LocalStorageService.kPlayerForceHttps, false);
+
     autoUpdateFollowEnable.value = LocalStorageService.instance
         .getValue(LocalStorageService.kAutoUpdateFollowEnable, true);
 
@@ -219,6 +225,20 @@ class AppSettingsController extends GetxController {
     playerBufferSize.value = e;
     LocalStorageService.instance
         .setValue(LocalStorageService.kPlayerBufferSize, e);
+  }
+
+  var playerLineStrategy = 0.obs;
+  void setPlayerLineStrategy(int e) {
+    playerLineStrategy.value = e;
+    LocalStorageService.instance
+        .setValue(LocalStorageService.kPlayerLineStrategy, e);
+  }
+
+  var playerForceHttps = false.obs;
+  void setPlayerForceHttps(bool e) {
+    playerForceHttps.value = e;
+    LocalStorageService.instance
+        .setValue(LocalStorageService.kPlayerForceHttps, e);
   }
 
   var playerAutoPause = false.obs;

@@ -36,7 +36,7 @@ class Log {
   static void logPrint(dynamic obj) {
     //logger.e(obj.toString(), obj, obj?.stackTrace);
     if (kDebugMode) {
-      print(obj);
+      debugPrint(obj.toString());
     }
   }
 }
