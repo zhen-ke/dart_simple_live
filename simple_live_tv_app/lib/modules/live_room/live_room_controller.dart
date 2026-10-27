@@ -6,16 +6,16 @@ import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:simple_live_core/simple_live_core.dart';
-import 'package:simple_live_tv_app/app/constant.dart';
+import 'package:simple_live_shared/app/constant.dart';
 import 'package:simple_live_tv_app/app/controller/app_settings_controller.dart';
-import 'package:simple_live_tv_app/app/event_bus.dart';
-import 'package:simple_live_tv_app/app/log.dart';
+import 'package:simple_live_shared/app/event_bus.dart';
+import 'package:simple_live_shared/app/log.dart';
 import 'package:simple_live_tv_app/app/sites.dart';
 import 'package:simple_live_tv_app/app/utils.dart';
-import 'package:simple_live_tv_app/models/db/follow_user.dart';
+import 'package:simple_live_shared/models/db/follow_user.dart';
 import 'package:simple_live_shared/models/db/history.dart';
 import 'package:simple_live_tv_app/modules/live_room/player/player_controller.dart';
-import 'package:simple_live_tv_app/services/db_service.dart';
+import 'package:simple_live_shared/services/db_service.dart';
 import 'package:simple_live_tv_app/services/follow_user_service.dart';
 
 class LiveRoomController extends PlayerController with WidgetsBindingObserver {

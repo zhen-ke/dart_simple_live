@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:simple_live_app/app/log.dart';
+import 'package:simple_live_shared/app/log.dart';
 
 /// 全局事件
 class EventBus {

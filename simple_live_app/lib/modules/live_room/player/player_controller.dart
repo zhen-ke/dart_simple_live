@@ -16,7 +16,7 @@ import 'package:canvas_danmaku/canvas_danmaku.dart';
 import 'package:simple_live_app/app/controller/app_settings_controller.dart';
 import 'package:simple_live_app/app/controller/base_controller.dart';
 import 'package:simple_live_app/app/custom_throttle.dart';
-import 'package:simple_live_app/app/log.dart';
+import 'package:simple_live_shared/app/log.dart';
 import 'package:simple_live_app/app/utils.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:window_manager/window_manager.dart';

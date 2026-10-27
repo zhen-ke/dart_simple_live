@@ -13,16 +13,18 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:simple_live_core/simple_live_core.dart';
 import 'package:simple_live_tv_app/app/app_style.dart';
 import 'package:simple_live_tv_app/app/controller/app_settings_controller.dart';
-import 'package:simple_live_tv_app/app/log.dart';
+import 'package:simple_live_shared/app/log.dart';
 import 'package:simple_live_tv_app/app/utils.dart';
-import 'package:simple_live_tv_app/models/db/follow_user.dart';
+import 'package:simple_live_shared/models/db/follow_user.dart';
 import 'package:simple_live_shared/models/db/history.dart';
+import 'package:simple_live_shared/app/constant.dart';
 import 'package:simple_live_tv_app/routes/app_pages.dart';
 import 'package:simple_live_tv_app/routes/route_path.dart';
-import 'package:simple_live_tv_app/services/bilibili_account_service.dart';
-import 'package:simple_live_tv_app/services/db_service.dart';
-import 'package:simple_live_tv_app/services/douyu_account_service.dart';
+import 'package:simple_live_shared/services/bilibili_account_service.dart';
+import 'package:simple_live_shared/services/db_service.dart';
+import 'package:simple_live_shared/services/douyu_account_service.dart';
 import 'package:simple_live_tv_app/services/follow_user_service.dart';
+import 'package:simple_live_tv_app/app/sites.dart';
 import 'package:simple_live_tv_app/services/local_storage_service.dart';
 import 'package:simple_live_tv_app/services/sync_service.dart';
 
@@ -58,7 +60,11 @@ Future<void> _bootstrap() async {
   MediaKit.ensureInitialized();
   // 包信息与 Hive 初始化互不依赖，并行执行，缩短冷启动串行链
   final packageInfoReady =
-      PackageInfo.fromPlatform().then((info) => Utils.packageInfo = info);
+      PackageInfo.fromPlatform().then(
+        (info) => {
+          Utils.packageInfo = info,
+          Log.packageInfo = info,
+        });
   await Hive.initFlutter();
   await packageInfoReady;
   //初始化服务
@@ -136,15 +142,40 @@ Future initServices() async {
   Log.d("Init LocalStorage Service");
   await Future.wait([
     Get.put(LocalStorageService()).init(),
-    Get.put(DBService()).init(),
+    Get.put(DBService(
+          historyBoxName: "TVHostiry",
+          followBoxName: "TVFollowUser",
+        )).init(),
   ]);
   //初始化设置控制器
   Get.put(AppSettingsController());
 
-  Get.put(BiliBiliAccountService());
+  // 账号服务为共享实现：凭据存取与站点注入由宿主闭包提供
+  Get.put(BiliBiliAccountService(
+    readStorage: (key) => LocalStorageService.instance.getValue(key, ""),
+    writeStorage: (key, value) =>
+        LocalStorageService.instance.setValue(key, value),
+    onIdentity: (uid, cookie) {
+      final site =
+          Sites.allSites[Constant.kBiliBili]!.liveSite as BiliBiliSite;
+      site.userId = uid;
+      site.cookie = cookie;
+    },
+  ));
 
   // 斗鱼账号服务：注入登录 Cookie 与本机持久化匿名 did（共享 did 会被风控掐流）
-  Get.put(DouyuAccountService());
+  Get.put(DouyuAccountService(
+    readStorage: (key) => LocalStorageService.instance.getValue(key, ""),
+    writeStorage: (key, value) =>
+        LocalStorageService.instance.setValue(key, value),
+    onIdentity: (cookie, deviceId) {
+      final site = Sites.allSites[Constant.kDouyu]?.liveSite;
+      if (site is DouyuSite) {
+        site.cookie = cookie;
+        site.deviceId = deviceId;
+      }
+    },
+  ));
 
   Get.put(SyncService());
 

@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:get/get.dart';
 import 'package:hive/hive.dart';
-import 'package:simple_live_tv_app/app/log.dart';
+import 'package:simple_live_shared/app/log.dart';
 
 class LocalStorageService extends GetxService {
   static LocalStorageService get instance => Get.find<LocalStorageService>();

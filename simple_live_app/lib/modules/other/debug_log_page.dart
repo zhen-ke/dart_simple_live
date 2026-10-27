@@ -5,7 +5,7 @@ import 'package:get/get.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:simple_live_app/app/app_style.dart';
-import 'package:simple_live_app/app/log.dart';
+import 'package:simple_live_shared/app/log.dart';
 
 class DebugLogPage extends StatelessWidget {
   const DebugLogPage({super.key});

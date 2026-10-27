@@ -2,7 +2,7 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:get/get.dart';
 import 'package:simple_live_app/app/controller/base_controller.dart';
 import 'package:simple_live_app/routes/route_path.dart';
-import 'package:simple_live_app/services/bilibili_account_service.dart';
+import 'package:simple_live_shared/services/bilibili_account_service.dart';
 
 class BiliBiliWebLoginController extends BaseController {
   InAppWebViewController? webViewController;

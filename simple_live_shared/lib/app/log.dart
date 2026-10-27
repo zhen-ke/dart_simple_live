@@ -7,11 +7,16 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:logger/logger.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:simple_live_app/app/utils.dart';
 
 class Log {
   static LogFileWriter? logFileWriter;
+
+  /// Package information: set by the host right after bootstrap; only used when writing the log file header
+  static PackageInfo? packageInfo;
+
+  static DateFormat timeFormat = DateFormat("HH:mm:ss");
 
   /// 是否输出日志：debug 默认开启；profile 用于性能测量，必须默认静默；
   /// release 仅在用户开启"日志记录"后打开。
@@ -23,8 +28,9 @@ class Log {
     enabled = true;
   }
 
+
   static void disposeWriter() {
-    logFileWriter?.close();
+    unawaited(logFileWriter?.close());
     logFileWriter = null;
     enabled = kDebugMode;
   }
@@ -151,7 +157,7 @@ class Log {
     }
   }
 
-  static String get _currentTime => Utils.timeFormat.format(DateTime.now());
+  static String get _currentTime => timeFormat.format(DateTime.now());
 }
 
 class LogFileWriter {
@@ -252,7 +258,7 @@ class LogFileWriter {
     write("Version: ${Platform.operatingSystemVersion}");
     write("Local: ${Platform.localeName}");
     write(
-      "App Version: ${Utils.packageInfo.version}+${Utils.packageInfo.buildNumber}",
+      "App Version: ${Log.packageInfo?.version}+${Log.packageInfo?.buildNumber ?? ''}",
     );
     if (Platform.isAndroid) {
       write((await deviceInfo.androidInfo).data.toString());

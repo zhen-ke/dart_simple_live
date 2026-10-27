@@ -6,16 +6,16 @@ import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:simple_live_app/app/app_style.dart';
-import 'package:simple_live_app/app/constant.dart';
+import 'package:simple_live_shared/app/constant.dart';
 import 'package:simple_live_app/app/controller/app_settings_controller.dart';
 import 'package:simple_live_app/app/controller/base_controller.dart';
-import 'package:simple_live_app/app/event_bus.dart';
-import 'package:simple_live_app/app/log.dart';
+import 'package:simple_live_shared/app/event_bus.dart';
+import 'package:simple_live_shared/app/log.dart';
 import 'package:simple_live_app/app/utils.dart';
-import 'package:simple_live_app/models/db/follow_user.dart';
+import 'package:simple_live_shared/models/db/follow_user.dart';
 import 'package:simple_live_shared/models/db/history.dart';
-import 'package:simple_live_app/services/bilibili_account_service.dart';
-import 'package:simple_live_app/services/db_service.dart';
+import 'package:simple_live_shared/services/bilibili_account_service.dart';
+import 'package:simple_live_shared/services/db_service.dart';
 import 'package:simple_live_app/services/signalr_service.dart';
 
 class RemoteSyncRoomController extends BaseController {

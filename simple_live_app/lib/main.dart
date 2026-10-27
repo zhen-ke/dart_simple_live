@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
@@ -14,21 +15,23 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:simple_live_app/app/app_style.dart';
 import 'package:simple_live_app/app/controller/app_settings_controller.dart';
-import 'package:simple_live_app/app/log.dart';
+import 'package:simple_live_shared/app/log.dart';
 import 'package:simple_live_app/app/utils.dart';
 import 'package:simple_live_app/app/utils/listen_fourth_button.dart';
-import 'package:simple_live_app/models/db/follow_user.dart';
-import 'package:simple_live_app/models/db/follow_user_tag.dart';
+import 'package:simple_live_shared/app/constant.dart';
+import 'package:simple_live_shared/models/db/follow_user.dart';
+import 'package:simple_live_shared/models/db/follow_user_tag.dart';
 import 'package:simple_live_shared/models/db/history.dart';
 import 'package:simple_live_app/modules/live_room/live_room_controller.dart';
 import 'package:simple_live_app/modules/other/debug_log_page.dart';
 import 'package:simple_live_app/routes/app_pages.dart';
 import 'package:simple_live_app/routes/route_path.dart';
-import 'package:simple_live_app/services/bilibili_account_service.dart';
-import 'package:simple_live_app/services/douyin_account_service.dart';
-import 'package:simple_live_app/services/db_service.dart';
-import 'package:simple_live_app/services/douyu_account_service.dart';
+import 'package:simple_live_shared/services/bilibili_account_service.dart';
+import 'package:simple_live_shared/services/douyin_account_service.dart';
+import 'package:simple_live_shared/services/db_service.dart';
+import 'package:simple_live_shared/services/douyu_account_service.dart';
 import 'package:simple_live_app/services/follow_service.dart';
+import 'package:simple_live_app/app/sites.dart';
 import 'package:simple_live_app/services/local_storage_service.dart';
 import 'package:simple_live_app/services/sync_service.dart';
 import 'package:simple_live_app/services/system_control_service.dart';
@@ -76,7 +79,11 @@ Future<void> _bootstrap() async {
   // 冷启动不必串行等完三个平台调用
   final windowReady = initWindow();
   final packageInfoReady =
-      PackageInfo.fromPlatform().then((info) => Utils.packageInfo = info);
+      PackageInfo.fromPlatform().then(
+        (info) => {
+          Utils.packageInfo = info,
+          Log.packageInfo = info,
+        });
 
   // 迁移必须在 Hive 打开任何 box 之前完成：
   // 桌面端要把旧目录的 hive 文件搬进 Application Support
@@ -175,12 +182,48 @@ Future initServices() async {
   //初始化设置控制器
   Get.put(AppSettingsController());
 
-  Get.put(BiliBiliAccountService());
+  // 账号服务为共享实现：凭据存取与站点注入由宿主闭包提供
+  Get.put(BiliBiliAccountService(
+    readStorage: (key) => LocalStorageService.instance.getValue(key, ""),
+    writeStorage: (key, value) =>
+        LocalStorageService.instance.setValue(key, value),
+    onIdentity: (uid, cookie) {
+      final site =
+          Sites.allSites[Constant.kBiliBili]!.liveSite as BiliBiliSite;
+      site.userId = uid;
+      site.cookie = cookie;
+    },
+    onLogoutExtra: () async {
+      // 移动端登出时同步清理 WebView 内的站点 Cookie
+      if (Platform.isAndroid || Platform.isIOS) {
+        await CookieManager.instance().deleteAllCookies();
+      }
+    },
+  ));
 
   // 斗鱼账号服务：注入登录 Cookie 与本机持久化匿名 did（共享 did 会被风控掐流）
-  Get.put(DouyuAccountService());
+  Get.put(DouyuAccountService(
+    readStorage: (key) => LocalStorageService.instance.getValue(key, ""),
+    writeStorage: (key, value) =>
+        LocalStorageService.instance.setValue(key, value),
+    onIdentity: (cookie, deviceId) {
+      final site = Sites.allSites[Constant.kDouyu]?.liveSite;
+      if (site is DouyuSite) {
+        site.cookie = cookie;
+        site.deviceId = deviceId;
+      }
+    },
+  ));
 
-  Get.put(DouyinAccountService());
+  Get.put(DouyinAccountService(
+    readStorage: (key) => LocalStorageService.instance.getValue(key, ""),
+    writeStorage: (key, value) =>
+        LocalStorageService.instance.setValue(key, value),
+    onIdentity: (cookie) {
+      (Sites.allSites[Constant.kDouyin]!.liveSite as DouyinSite).cookie =
+          cookie;
+    },
+  ));
 
   Get.put(SyncService());
 

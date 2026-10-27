@@ -1,9 +1,9 @@
 import 'package:flutter/widgets.dart';
 
 import 'package:get/get.dart';
-import 'package:simple_live_app/app/constant.dart';
+import 'package:simple_live_shared/app/constant.dart';
 import 'package:simple_live_app/app/controller/app_settings_controller.dart';
-import 'package:simple_live_app/app/event_bus.dart';
+import 'package:simple_live_shared/app/event_bus.dart';
 import 'package:simple_live_app/app/utils.dart';
 import 'package:simple_live_app/modules/category/category_controller.dart';
 import 'package:simple_live_app/modules/category/category_page.dart';

@@ -1,4 +1,4 @@
-import 'package:simple_live_app/app/constant.dart';
+import 'package:simple_live_shared/app/constant.dart';
 import 'package:simple_live_app/app/controller/app_settings_controller.dart';
 import 'package:simple_live_core/simple_live_core.dart';
 

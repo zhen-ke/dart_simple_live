@@ -8,15 +8,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:simple_live_app/app/constant.dart';
+import 'package:simple_live_shared/app/constant.dart';
 import 'package:simple_live_app/app/controller/app_settings_controller.dart';
-import 'package:simple_live_app/app/event_bus.dart';
-import 'package:simple_live_app/app/log.dart';
+import 'package:simple_live_shared/app/event_bus.dart';
+import 'package:simple_live_shared/app/log.dart';
 import 'package:simple_live_app/app/sites.dart';
 import 'package:simple_live_app/app/utils.dart';
-import 'package:simple_live_app/models/db/follow_user.dart';
-import 'package:simple_live_app/models/db/follow_user_tag.dart';
-import 'package:simple_live_app/services/db_service.dart';
+import 'package:simple_live_shared/models/db/follow_user.dart';
+import 'package:simple_live_shared/models/db/follow_user_tag.dart';
+import 'package:simple_live_shared/services/db_service.dart';
 
 class FollowService extends GetxService {
   StreamSubscription<dynamic>? subscription;

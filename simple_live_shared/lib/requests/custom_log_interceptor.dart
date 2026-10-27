@@ -1,7 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:simple_live_shared/app/log.dart';
 import 'package:simple_live_core/simple_live_core.dart';
-import 'package:simple_live_tv_app/app/log.dart';
 
 class CustomLogInterceptor extends Interceptor {
   @override
@@ -15,7 +15,7 @@ class CustomLogInterceptor extends Interceptor {
   void onError(DioException err, ErrorInterceptorHandler handler) {
     var time =
         DateTime.now().millisecondsSinceEpoch - err.requestOptions.extra["ts"];
-    // 只有 debug 才打印完整请求/响应体：release 构建不该为日志付这份开销
+    // 只有 debug 才打印完整请求体/响应体：profile 构建同样不应付这份开销
     if (kDebugMode) {
       Log.e('''【HTTP请求错误-${err.type}】 耗时:${time}ms
 ${err.message}
@@ -25,15 +25,23 @@ Response Code：${err.response?.statusCode}
 Request URL：${err.requestOptions.uri}
 Request Query：${err.requestOptions.queryParameters}
 Request Data：${err.requestOptions.data}
-Request Headers：${err.requestOptions.headers}
+Request Headers：${_maskHeader(err.requestOptions.headers)}
 Response Headers：${err.response?.headers.map}
 Response Data：${err.response?.data}''', err.stackTrace);
     } else {
       CoreLog.e('''[HTTP Error] [${err.type}] [Time:${time}ms]
 ${err.message}
+
+Request Method：${err.requestOptions.method}
 Response Code：${err.response?.statusCode}
-Request URL：${err.requestOptions.uri}''', err.stackTrace);
+Request URL：${err.requestOptions.uri}
+Request Query：${err.requestOptions.queryParameters}
+Request Data：${err.requestOptions.data}
+Request Headers：${_maskHeader(err.requestOptions.headers)}
+Response Headers：${err.response?.headers.map}
+Response Data：${err.response?.data}''', err.stackTrace);
     }
+
     super.onError(err, handler);
   }
 
@@ -49,7 +57,7 @@ Request Code：${response.statusCode}
 Request URL：${response.requestOptions.uri}
 Request Query：${response.requestOptions.queryParameters}
 Request Data：${response.requestOptions.data}
-Request Headers：${response.requestOptions.headers}
+Request Headers：${_maskHeader(response.requestOptions.headers)}
 Response Headers：${response.headers.map}
 Response Data：${response.data}''',
       );
@@ -59,5 +67,19 @@ Response Data：${response.data}''',
       );
     }
     super.onResponse(response, handler);
+  }
+
+  // Header脱敏
+  String _maskHeader(Map<String, dynamic> header) {
+    var result = <String, dynamic>{};
+    header.forEach((key, value) {
+      var k = key.toLowerCase();
+      if (k == "cookie" || k == "authorization") {
+        result[key] = "******";
+      } else {
+        result[key] = value;
+      }
+    });
+    return result.toString();
   }
 }

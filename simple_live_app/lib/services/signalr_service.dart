@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:signalr_netcore/signalr_client.dart';
-import 'package:simple_live_app/app/log.dart';
+import 'package:simple_live_shared/app/log.dart';
 import 'package:simple_live_app/app/utils.dart';
 
 enum SignalRConnectionState {

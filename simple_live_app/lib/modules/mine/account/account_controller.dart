@@ -5,9 +5,9 @@ import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
 import 'package:simple_live_app/app/utils.dart';
 import 'package:simple_live_app/routes/route_path.dart';
-import 'package:simple_live_app/services/bilibili_account_service.dart';
-import 'package:simple_live_app/services/douyin_account_service.dart';
-import 'package:simple_live_app/services/douyu_account_service.dart';
+import 'package:simple_live_shared/services/bilibili_account_service.dart';
+import 'package:simple_live_shared/services/douyin_account_service.dart';
+import 'package:simple_live_shared/services/douyu_account_service.dart';
 import 'package:simple_live_core/simple_live_core.dart';
 
 class AccountController extends GetxController {

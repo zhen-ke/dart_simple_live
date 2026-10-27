@@ -10,7 +10,7 @@ import 'package:get/get.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:simple_live_tv_app/app/controller/app_settings_controller.dart';
-import 'package:simple_live_tv_app/app/log.dart';
+import 'package:simple_live_shared/app/log.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 /// 缓冲区大小(MB)映射为 demuxer 预读秒数（cache-secs）：

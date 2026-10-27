@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:simple_live_shared/models/version_model.dart';
-import 'package:simple_live_tv_app/requests/http_client.dart';
+import 'package:simple_live_shared/requests/http_client.dart';
 
 /// 通用的请求
 class CommonRequest {

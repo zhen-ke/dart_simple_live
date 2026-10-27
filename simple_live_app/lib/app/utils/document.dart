@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:simple_live_app/app/log.dart';
+import 'package:simple_live_shared/app/log.dart';
 
 // 扩展 Directory 类，添加清空文件夹的功能并验证是否为文件夹
 extension DirectoryCleaner on Directory {

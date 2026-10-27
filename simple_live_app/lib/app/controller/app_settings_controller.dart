@@ -1,7 +1,7 @@
 import 'dart:io';
 
-import 'package:simple_live_app/app/constant.dart';
-import 'package:simple_live_app/app/log.dart';
+import 'package:simple_live_shared/app/constant.dart';
+import 'package:simple_live_shared/app/log.dart';
 import 'package:simple_live_app/app/sites.dart';
 import 'package:simple_live_app/services/local_storage_service.dart';
 

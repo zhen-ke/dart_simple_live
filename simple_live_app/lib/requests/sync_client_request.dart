@@ -1,5 +1,5 @@
 import 'package:simple_live_app/models/sync_client_info_model.dart';
-import 'package:simple_live_app/requests/http_client.dart';
+import 'package:simple_live_shared/requests/http_client.dart';
 import 'package:simple_live_shared/requests/http_error.dart';
 import 'package:simple_live_app/services/sync_service.dart';
 

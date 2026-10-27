@@ -2,9 +2,9 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
-import 'package:simple_live_app/models/db/follow_user.dart';
-import 'package:simple_live_app/models/db/follow_user_tag.dart';
-import 'package:simple_live_app/services/db_service.dart';
+import 'package:simple_live_shared/models/db/follow_user.dart';
+import 'package:simple_live_shared/models/db/follow_user_tag.dart';
+import 'package:simple_live_shared/services/db_service.dart';
 import 'package:simple_live_shared/models/db/history.dart';
 
 /// DBService.merge* 的纯逻辑回归网：

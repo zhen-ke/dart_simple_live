@@ -1,12 +1,26 @@
 import 'package:get/get.dart';
 import 'package:hive/hive.dart';
-import 'package:simple_live_app/models/db/follow_user.dart';
-import 'package:simple_live_app/models/db/follow_user_tag.dart';
+import 'package:simple_live_shared/models/db/follow_user.dart';
+import 'package:simple_live_shared/models/db/follow_user_tag.dart';
 import 'package:simple_live_shared/models/db/history.dart';
 import 'package:uuid/uuid.dart';
 import 'package:collection/collection.dart';
 
 class DBService extends GetxService {
+  DBService({
+    this.historyBoxName = "History",
+    this.followBoxName = "FollowUser",
+    this.tagBoxName = "FollowUserTag",
+    this.tagOrderBoxName = "FollowUserTagOrder",
+  });
+
+  /// box 名可注入：TV 端沿用历史的 TV* 前缀名，避免升级丢数据。
+  /// TV 会多开两个空的标签 box，代价可忽略，换来合并语义单源
+  final String historyBoxName;
+  final String followBoxName;
+  final String tagBoxName;
+  final String tagOrderBoxName;
+
   static DBService get instance => Get.find<DBService>();
   late Box<History> historyBox;
   late Box<FollowUser> followBox;
@@ -20,10 +34,10 @@ class DBService extends GetxService {
   Future init() async {
     // 四个 box 互不依赖，并行打开，冷启动不必串行等完四轮磁盘 IO；
     // 标签迁移只读已打开的内存数据，代价极小，必须先于关注页读取完成
-    final historyFuture = Hive.openBox<History>("History");
-    final followFuture = Hive.openBox<FollowUser>("FollowUser");
-    final tagFuture = Hive.openBox<FollowUserTag>("FollowUserTag");
-    final tagOrderFuture = Hive.openBox("FollowUserTagOrder");
+    final historyFuture = Hive.openBox<History>(historyBoxName);
+    final followFuture = Hive.openBox<FollowUser>(followBoxName);
+    final tagFuture = Hive.openBox<FollowUserTag>(tagBoxName);
+    final tagOrderFuture = Hive.openBox(tagOrderBoxName);
     historyBox = await historyFuture;
     followBox = await followFuture;
     tagBox = await tagFuture;

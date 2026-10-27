@@ -1,5 +1,5 @@
 import 'package:dio/dio.dart';
-import 'package:simple_live_tv_app/requests/custom_log_interceptor.dart';
+import 'package:simple_live_shared/requests/custom_log_interceptor.dart';
 import 'package:simple_live_shared/requests/http_error.dart';
 
 class HttpClient {

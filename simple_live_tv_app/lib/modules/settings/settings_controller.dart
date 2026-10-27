@@ -4,8 +4,8 @@ import 'package:simple_live_tv_app/app/app_focus_node.dart';
 import 'package:simple_live_tv_app/app/controller/base_controller.dart';
 import 'package:simple_live_tv_app/app/utils.dart';
 import 'package:simple_live_tv_app/routes/app_navigation.dart';
-import 'package:simple_live_tv_app/services/bilibili_account_service.dart';
-import 'package:simple_live_tv_app/services/douyu_account_service.dart';
+import 'package:simple_live_shared/services/bilibili_account_service.dart';
+import 'package:simple_live_shared/services/douyu_account_service.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 
 class SettingsController extends BaseController
