@@ -14,7 +14,7 @@ import 'package:simple_live_shared/models/db/history.dart';
 import 'package:simple_live_shared/services/bilibili_account_service.dart';
 import 'package:simple_live_shared/services/db_service.dart';
 import 'package:simple_live_tv_app/services/signalr_service.dart';
-import 'package:simple_live_tv_app/services/sync_service.dart';
+import 'package:simple_live_shared/services/sync_service.dart';
 
 class SyncController extends BaseController {
   final SignalRService signalR = SignalRService();

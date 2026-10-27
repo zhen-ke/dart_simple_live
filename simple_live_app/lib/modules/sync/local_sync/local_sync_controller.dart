@@ -13,7 +13,7 @@ import 'package:simple_live_app/requests/sync_client_request.dart';
 import 'package:simple_live_app/routes/app_navigation.dart';
 import 'package:simple_live_app/routes/route_path.dart';
 
-import 'package:simple_live_app/services/sync_service.dart';
+import 'package:simple_live_shared/services/sync_service.dart';
 
 class LocalSyncController extends BaseController {
   final String? address;

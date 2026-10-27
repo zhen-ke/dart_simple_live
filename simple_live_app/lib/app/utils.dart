@@ -13,6 +13,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:simple_live_shared/app/json_isolate.dart' as shared_json;
 import 'package:simple_live_shared/app/log.dart';
 
 typedef TextValidate = bool Function(String text);
@@ -20,14 +21,12 @@ typedef TextValidate = bool Function(String text);
 class Utils {
   static late PackageInfo packageInfo;
 
-  /// 大列表 JSON 编码放后台 isolate：历史记录等大列表在 UI 线程
-  /// 序列化会造成可感知的掉帧（局域网/房间同步均走这里）
+  /// 大列表 JSON 编解码放后台 isolate：实现收敛在 shared（见 json_isolate.dart）
   static Future<String> encodeJsonInIsolate(Object? value) =>
-      Isolate.run(() => jsonEncode(value));
+      shared_json.encodeJsonInIsolate(value);
 
-  /// 大列表 JSON 解码放后台 isolate，与 [encodeJsonInIsolate] 对称
   static Future<dynamic> decodeJsonInIsolate(String source) =>
-      Isolate.run(() => jsonDecode(source));
+      shared_json.decodeJsonInIsolate(source);
 
   static DateFormat dateFormat = DateFormat("MM-dd HH:mm");
   static DateFormat dateFormatWithYear = DateFormat("yyyy-MM-dd HH:mm");

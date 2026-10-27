@@ -8,10 +8,9 @@ import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
 import 'package:network_info_plus/network_info_plus.dart';
 import 'package:simple_live_shared/app/constant.dart';
-import 'package:simple_live_app/app/controller/app_settings_controller.dart';
 import 'package:simple_live_shared/app/event_bus.dart';
+import 'package:simple_live_shared/app/json_isolate.dart';
 import 'package:simple_live_shared/app/log.dart';
-import 'package:simple_live_app/app/utils.dart';
 import 'package:simple_live_shared/models/db/follow_user.dart';
 import 'package:simple_live_shared/models/db/follow_user_tag.dart';
 import 'package:simple_live_shared/models/db/history.dart';
@@ -24,6 +23,32 @@ import 'package:shelf_router/shelf_router.dart';
 import 'package:uuid/uuid.dart';
 
 class SyncService extends GetxService {
+  SyncService({
+    required this.platformType,
+    required this.defaultDeviceName,
+    required this.onAddShieldWord,
+    required this.onClearShieldWords,
+    required this.confirmDialog,
+  });
+
+  /// 对外广播/应答里的平台标识：app 用 Platform.operatingSystem，TV 用 "tv"
+  final String platformType;
+
+  /// 设备名兜底值：拿不到真实设备型号时使用（app: `SimpleLive-<os>`，TV: SimpleLive-TV）
+  final String defaultDeviceName;
+
+  /// 弹幕屏蔽词的落点：由宿主接自己的设置控制器
+  final void Function(String word) onAddShieldWord;
+  final Future<void> Function() onClearShieldWords;
+
+  /// 确认弹窗：由宿主接自己的 Utils.showAlertDialog（两端样式一致）
+  final Future<bool> Function(
+    String content,
+    String title,
+    String confirm,
+    String cancel,
+  ) confirmDialog;
+
   static SyncService get instance => Get.find<SyncService>();
 
   UDP? udp;
@@ -56,7 +81,7 @@ class SyncService extends GetxService {
 
   @override
   void onInit() {
-    Log.d('TVService init');
+    Log.d('SyncService init');
     deviceId = (const Uuid().v4()).split('-').first;
     // HTTP 服务改为进入同步页时按需启动，不再应用启动即监听；
     // UDP 常驻监听，但仅在 httpRunning 时才会回应发现广播。
@@ -158,6 +183,11 @@ class SyncService extends GetxService {
           ),
         );
       }
+    } else if (str == 'Who is SimpleLive?') {
+      // 旧版客户端的纯文本探测：仍在服务期内则应答
+      if (httpRunning.value) {
+        unawaited(sendInfo());
+      }
     }
   }
 
@@ -186,8 +216,8 @@ class SyncService extends GetxService {
       final name = await getDeviceName();
       final data = {
         "id": deviceId,
-        "type": Platform.operatingSystem,
-        //'version': Utils.packageInfo.version,
+        "type": platformType,
+        //'version': Log.packageInfo?.version,
         "name": name,
         //"address": ip,
         //"port": httpPort,
@@ -206,7 +236,7 @@ class SyncService extends GetxService {
   }
 
   Future<String> getDeviceName() async {
-    var name = "SimpleLive-${Platform.operatingSystem}";
+    var name = defaultDeviceName;
     if (Platform.isAndroid) {
       var info = await deviceInfo.androidInfo;
       name = info.model;
@@ -362,7 +392,7 @@ class SyncService extends GetxService {
       'status': true,
       'message': 'http server is running...',
       "version":
-          'SimpeLive ${Platform.operatingSystem} v${Utils.packageInfo.version}',
+          'SimpeLive ${Platform.operatingSystem} v${Log.packageInfo?.version ?? ''}',
     });
   }
 
@@ -371,9 +401,9 @@ class SyncService extends GetxService {
     var name = await getDeviceName();
     return toJsonResponse({
       "id": deviceId,
-      'type': Platform.operatingSystem,
+      'type': platformType,
       'name': name,
-      'version': Utils.packageInfo.version,
+      'version': Log.packageInfo?.version ?? '',
       'address': ipAddress.value,
       'port': httpPort,
       // 配对令牌：客户端拿到后需在每个写请求里带回
@@ -440,13 +470,13 @@ class SyncService extends GetxService {
     bool isAccountSync,
   ) async {
     try {
-      return await Utils.showAlertDialog(
+      return await confirmDialog(
         isAccountSync
             ? '设备"$clientName"请求同步登录账号（含登录凭据），是否允许？'
             : '设备"$clientName"请求写入本机数据，是否允许？',
-        title: "同步配对确认",
-        confirm: "允许",
-        cancel: "拒绝",
+        "同步配对确认",
+        "允许",
+        "拒绝",
       ).timeout(_pairApprovalTimeout);
     } catch (_) {
       // 超时或弹窗失败（如页面已销毁）都按拒绝处理
@@ -483,7 +513,7 @@ class SyncService extends GetxService {
       );
 
       var body = await _readLimitedBody(request);
-      var jsonBody = await Utils.decodeJsonInIsolate(body);
+      var jsonBody = await decodeJsonInIsolate(body);
       // 先完整解析再覆盖写入：解析失败不清空本地数据
       final users = <FollowUser>[];
       for (var item in jsonBody) {
@@ -491,7 +521,7 @@ class SyncService extends GetxService {
       }
       await DBService.instance.mergeFollows(users, overlay: overlay == 1);
 
-      SmartDialog.showToast('已同步关注用户列表');
+      unawaited(SmartDialog.showToast('已同步关注用户列表'));
       EventBus.instance.emit(Constant.kUpdateFollow, 0);
       return toJsonResponse({'status': true, 'message': 'success'});
     } catch (e) {
@@ -509,7 +539,7 @@ class SyncService extends GetxService {
       );
 
       var body = await _readLimitedBody(request);
-      var jsonBody = await Utils.decodeJsonInIsolate(body);
+      var jsonBody = await decodeJsonInIsolate(body);
       // 先完整解析再覆盖写入：解析失败不清空本地数据
       final tags = <FollowUserTag>[];
       for (var item in jsonBody) {
@@ -517,7 +547,7 @@ class SyncService extends GetxService {
       }
       await DBService.instance.mergeTags(tags, overlay: overlay == 1);
 
-      SmartDialog.showToast('已同步标签列表');
+      unawaited(SmartDialog.showToast('已同步标签列表'));
       EventBus.instance.emit(Constant.kUpdateFollow, 0);
       return toJsonResponse({'status': true, 'message': 'success'});
     } catch (e) {
@@ -532,7 +562,7 @@ class SyncService extends GetxService {
         request.requestedUri.queryParameters['overlay'] ?? '0',
       );
       var body = await _readLimitedBody(request);
-      var jsonBody = await Utils.decodeJsonInIsolate(body);
+      var jsonBody = await decodeJsonInIsolate(body);
       // 先完整解析再覆盖写入：解析失败不清空本地数据
       final histories = <History>[];
       for (var item in jsonBody) {
@@ -541,7 +571,7 @@ class SyncService extends GetxService {
       // 先在内存里比完新旧，再一次性落盘（见 DBService.mergeHistories）
       await DBService.instance.mergeHistories(histories, overlay: overlay == 1);
 
-      SmartDialog.showToast('已同步观看记录');
+      unawaited(SmartDialog.showToast('已同步观看记录'));
       EventBus.instance.emit(Constant.kUpdateHistory, 0);
       return toJsonResponse({'status': true, 'message': 'success'});
     } catch (e) {
@@ -556,14 +586,14 @@ class SyncService extends GetxService {
         request.requestedUri.queryParameters['overlay'] ?? '0',
       );
       var body = await _readLimitedBody(request);
-      var jsonBody = await Utils.decodeJsonInIsolate(body);
+      var jsonBody = await decodeJsonInIsolate(body);
       if (overlay == 1) {
-        AppSettingsController.instance.clearShieldList();
+        await onClearShieldWords();
       }
       for (var keyword in jsonBody) {
-        AppSettingsController.instance.addShieldList(keyword.trim());
+        onAddShieldWord(keyword.trim());
       }
-      SmartDialog.showToast('已同步弹幕屏蔽词');
+      unawaited(SmartDialog.showToast('已同步弹幕屏蔽词'));
       return toJsonResponse({'status': true, 'message': 'success'});
     } catch (e) {
       return toJsonResponse({'status': false, 'message': e.toString()});
@@ -574,11 +604,11 @@ class SyncService extends GetxService {
   Future<shelf.Response> _syncBiliAccountReuqest(shelf.Request request) async {
     try {
       var body = await _readLimitedBody(request);
-      var jsonBody = await Utils.decodeJsonInIsolate(body);
+      var jsonBody = await decodeJsonInIsolate(body);
       var cookie = jsonBody['cookie'];
       BiliBiliAccountService.instance.setCookie(cookie);
-      BiliBiliAccountService.instance.loadUserInfo();
-      SmartDialog.showToast('已同步哔哩哔哩账号');
+      unawaited(BiliBiliAccountService.instance.loadUserInfo());
+      unawaited(SmartDialog.showToast('已同步哔哩哔哩账号'));
       return toJsonResponse({'status': true, 'message': 'success'});
     } catch (e) {
       return toJsonResponse({'status': false, 'message': e.toString()});

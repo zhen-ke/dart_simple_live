@@ -24,11 +24,16 @@
     合并语义单源，app 的 merge* 单测同时覆盖两端）
   - `services/bilibili/douyu/douyin_account_service.dart`（凭据存取与
     站点身份注入由宿主闭包提供，见两端 main.dart 的注册处）
-- 尚未迁移（两端行为差异大，需先做行为决策）：
-  - `services/local_storage_service.dart`（设置键集合两端不同）
-  - `services/sync_service.dart`（app 多 tag 同步路由）
-  - `app/controller/app_settings_controller.dart`（设置项集合不同）
-  - player 核心与 UI 层（差异最大，最后迁）
+  - `services/local_storage_service.dart`（键集合取两端超集，box 名注入；
+    顺带修复 TV 端斗鱼设备号日志未脱敏）
+  - `services/sync_service.dart`（UDP 发现/HTTP 服务/配对确认/全部同步
+    路由单源；TV 补齐 /sync/tag，同步协议两端完全一致；
+    平台标识、设备名兜底、屏蔽词落点与确认弹窗由宿主注入）
+- 不再迁移（已用函数级 diff 证实为产品差异而非复制粘贴）：
+  - `app/controller/app_settings_controller.dart`（设置项集合两端不同，
+    无共同函数）
+  - player 核心与 UI 层（两端 player_controller 仅共享 2 个不足 10 行的
+    函数；自动隐藏时长、手势、遥控器焦点等均为产品差异）
 
 ## 约定
 

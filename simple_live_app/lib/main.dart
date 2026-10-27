@@ -33,7 +33,7 @@ import 'package:simple_live_shared/services/douyu_account_service.dart';
 import 'package:simple_live_app/services/follow_service.dart';
 import 'package:simple_live_app/app/sites.dart';
 import 'package:simple_live_shared/services/local_storage_service.dart';
-import 'package:simple_live_app/services/sync_service.dart';
+import 'package:simple_live_shared/services/sync_service.dart';
 import 'package:simple_live_app/services/system_control_service.dart';
 import 'package:simple_live_app/widgets/status/app_loadding_widget.dart';
 import 'package:simple_live_core/simple_live_core.dart';
@@ -225,7 +225,23 @@ Future initServices() async {
     },
   ));
 
-  Get.put(SyncService());
+  // 同步服务为共享实现：平台标识、设备名兜底、屏蔽词落点与确认弹窗由宿主提供
+  Get.put(SyncService(
+    platformType: Platform.operatingSystem,
+    defaultDeviceName: "SimpleLive-${Platform.operatingSystem}",
+    onAddShieldWord: (word) =>
+        AppSettingsController.instance.addShieldList(word),
+    onClearShieldWords: () async {
+      await AppSettingsController.instance.clearShieldList();
+    },
+    confirmDialog: (content, title, confirm, cancel) =>
+        Utils.showAlertDialog(
+      content,
+      title: title,
+      confirm: confirm,
+      cancel: cancel,
+    ),
+  ));
 
   Get.put(FollowService());
 

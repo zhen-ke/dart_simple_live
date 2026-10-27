@@ -5,7 +5,7 @@ import 'package:get/get.dart';
 import 'package:remixicon/remixicon.dart';
 import 'package:simple_live_app/app/app_style.dart';
 import 'package:simple_live_app/modules/sync/local_sync/local_sync_controller.dart';
-import 'package:simple_live_app/services/sync_service.dart';
+import 'package:simple_live_shared/services/sync_service.dart';
 import 'package:simple_live_app/widgets/settings/settings_card.dart';
 
 class LocalSyncPage extends GetView<LocalSyncController> {
