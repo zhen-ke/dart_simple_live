@@ -308,9 +308,15 @@ class PlayerController extends BaseController
   StreamSubscription? _logSubscription;
   StreamSubscription<bool>? _playingSubscription;
 
+  /// mpv 日志订阅与事件打印的门禁：profile 用于性能测量，
+  /// 订阅 mpv log 本身就有解析开销，必须与普通日志一起默认静默
+  bool get _shouldLogPlayerEvents => kDebugMode;
+
   void initStream() {
     _errorSubscription = player.stream.error.listen((event) {
-      Log.d("播放器错误：$event");
+      if (_shouldLogPlayerEvents) {
+        Log.d("播放器错误：$event");
+      }
       if (event.contains('no sound.')) {
         return;
       }
@@ -329,12 +335,16 @@ class PlayerController extends BaseController
         onPlayingStarted();
       }
     });
-    _logSubscription = player.stream.log.listen((event) {
-      Log.d("播放器日志：$event");
-    });
+    if (_shouldLogPlayerEvents) {
+      _logSubscription = player.stream.log.listen((event) {
+        Log.d("播放器日志：$event");
+      });
+    }
     // 合并为单一 videoParams 订阅：width/height 同源，避免重复回调与日志
     _videoParamsSubscription = player.stream.videoParams.listen((_) {
-      Log.w('videoParams: W:${player.state.width}  H:${player.state.height}');
+      if (_shouldLogPlayerEvents) {
+        Log.w('videoParams: W:${player.state.width}  H:${player.state.height}');
+      }
       width.value = player.state.width ?? 0;
       height.value = player.state.height ?? 0;
     });

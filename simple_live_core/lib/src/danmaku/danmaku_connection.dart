@@ -23,4 +23,15 @@ mixin DanmakuConnection {
     webScoketUtils?.close();
     webScoketUtils = null;
   }
+
+  /// 后台挂起心跳：暂停心跳定时器，减少后台唤醒与电量消耗。
+  /// 连接本身保留，短时间回前台无需重连
+  void suspendHeartbeat() {
+    webScoketUtils?.suspendHeartbeat();
+  }
+
+  /// 恢复心跳：连接仍在时立即补发一次心跳并重启定时器
+  void resumeHeartbeat() {
+    webScoketUtils?.resumeHeartbeat();
+  }
 }

@@ -3,8 +3,8 @@
 # 与 app 端保持同一套规则，避免两端因为 lint 门槛不同再次出现"只改了一边"。
 # 基线 flutter_lints 已包含 avoid_print 等基础规则。
 #
-# 实测基线（2026-10，flutter analyze）：
-# 全量 139 条告警，其中 126 条来自下面两条规则（unawaited 50 / discarded 76）。
+# 实测基线（2026-10，flutter analyze；dart fix --apply 已清空机械项）：
+# 全量 127 条告警，其中 126 条来自下面两条规则（unawaited 50 / discarded 76）。
 # 绝大多数是 UI 与平台侧"发完就不管"的调用，没有可恢复的失败路径。
 # 存量暂不清理，规则用于拦住新代码里的漏 await。
 analyzer:

@@ -287,7 +287,7 @@ class HomePage extends GetView<HomeController> {
                 Obx(
                   () => ListView.separated(
                     itemCount: FollowUserService.instance.list.length,
-                    separatorBuilder: (_, __) => AppStyle.vGap24,
+                    separatorBuilder: (_, _) => AppStyle.vGap24,
                     padding: AppStyle.edgeInsetsA40,
                     itemBuilder: (_, i) {
                       return _FollowUserTile(

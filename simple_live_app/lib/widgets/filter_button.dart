@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:simple_live_app/app/app_style.dart';
 
 class FilterButton extends StatefulWidget {
   final bool selected;
@@ -9,8 +8,8 @@ class FilterButton extends StatefulWidget {
     this.selected = false,
     required this.text,
     this.onTap,
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   State<FilterButton> createState() => _FilterButtonState();
@@ -30,17 +29,17 @@ class _FilterButtonState extends State<FilterButton> {
     BorderSide borderSide;
 
     if (widget.selected) {
-      bgColor = primaryColor.withOpacity(isDark ? 0.25 : 0.12);
+      bgColor = primaryColor.withValues(alpha: isDark ? 0.25 : 0.12);
       textColor = primaryColor;
-      borderSide = BorderSide(color: primaryColor.withOpacity(0.4), width: 1.2);
+      borderSide = BorderSide(color: primaryColor.withValues(alpha: 0.4), width: 1.2);
     } else if (_isHovered) {
-      bgColor = isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.05);
+      bgColor = isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.05);
       textColor = theme.textTheme.bodyMedium?.color ?? Colors.black87;
-      borderSide = BorderSide(color: Colors.grey.withOpacity(0.3), width: 1);
+      borderSide = BorderSide(color: Colors.grey.withValues(alpha: 0.3), width: 1);
     } else {
-      bgColor = isDark ? Colors.white.withOpacity(0.04) : Colors.black.withOpacity(0.03);
+      bgColor = isDark ? Colors.white.withValues(alpha: 0.04) : Colors.black.withValues(alpha: 0.03);
       textColor = isDark ? const Color(0xffa0a0a5) : const Color(0xff6e6e73);
-      borderSide = BorderSide(color: Colors.grey.withOpacity(0.18), width: 1);
+      borderSide = BorderSide(color: Colors.grey.withValues(alpha: 0.18), width: 1);
     }
 
     return MouseRegion(
@@ -59,7 +58,7 @@ class _FilterButtonState extends State<FilterButton> {
             boxShadow: widget.selected
                 ? [
                     BoxShadow(
-                      color: primaryColor.withOpacity(0.15),
+                      color: primaryColor.withValues(alpha: 0.15),
                       blurRadius: 6,
                       offset: const Offset(0, 2),
                     )

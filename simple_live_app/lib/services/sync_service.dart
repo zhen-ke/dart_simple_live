@@ -14,7 +14,7 @@ import 'package:simple_live_app/app/log.dart';
 import 'package:simple_live_app/app/utils.dart';
 import 'package:simple_live_app/models/db/follow_user.dart';
 import 'package:simple_live_app/models/db/follow_user_tag.dart';
-import 'package:simple_live_app/models/db/history.dart';
+import 'package:simple_live_shared/models/db/history.dart';
 import 'package:simple_live_app/services/bilibili_account_service.dart';
 import 'package:simple_live_app/services/db_service.dart';
 import 'package:udp/udp.dart';
@@ -50,6 +50,9 @@ class SyncService extends GetxService {
 
   /// 写接口鉴权头
   static const String syncTokenHeader = "x-sync-token";
+
+  /// 来源设备名头：客户端写请求必须携带，用于配对确认弹窗展示
+  static const String syncClientHeader = "x-sync-client";
 
   @override
   void onInit() {
@@ -282,6 +285,9 @@ class SyncService extends GetxService {
     _serverWanted = false;
     httpRunning.value = false;
     _syncToken = "";
+    // 会话结束：配对记录一并作废，下次启动需重新确认
+    _approvedClients.clear();
+    _pairApprovalFutures.clear();
     var s = server;
     server = null;
     await s?.close(force: true);
@@ -379,16 +385,73 @@ class SyncService extends GetxService {
   /// 放在路由外层而不是各 handler 里：新增同步接口默认受保护。
   shelf.Middleware _syncAuthMiddleware() {
     return (shelf.Handler inner) {
-      return (shelf.Request request) {
+      return (shelf.Request request) async {
         final segments = request.url.pathSegments;
         if (segments.isEmpty || segments.first != 'sync') {
           return inner(request);
         }
         final denied = _rejectUnauthorized(request);
         if (denied != null) return denied;
+        // 令牌来自公开的 /info，拿到它不构成身份证明：
+        // 写入还需要本机用户对来源设备做一次配对确认
+        final pairDenied = await _ensurePairApproved(request);
+        if (pairDenied != null) return pairDenied;
         return inner(request);
       };
     };
+  }
+
+  /// 已通过配对确认的来源设备：本次服务会话内有效
+  final Set<String> _approvedClients = {};
+
+  /// 进行中的配对确认：同设备的并发写请求共享同一次弹窗
+  final Map<String, Future<bool>> _pairApprovalFutures = {};
+
+  /// 配对确认超时：无响应按拒绝处理，请求方会收到明确错误
+  static const Duration _pairApprovalTimeout = Duration(seconds: 30);
+
+  /// 配对确认：客户端在写请求头中带上自己的设备名，
+  /// 首次出现的设备需要本机用户弹窗放行。
+  /// 返回 null 表示通过，否则返回应直接回给客户端的错误响应。
+  Future<shelf.Response?> _ensurePairApproved(shelf.Request request) async {
+    final clientName = request.headers[syncClientHeader]?.trim() ?? "";
+    if (clientName.isEmpty) {
+      return _errorResponse('客户端版本过旧，请升级后重试', status: 403);
+    }
+    if (_approvedClients.contains(clientName)) {
+      return null;
+    }
+    var pending = _pairApprovalFutures[clientName];
+    if (pending == null) {
+      final isAccountSync = request.url.pathSegments.contains('account');
+      pending = _requestPairApproval(clientName, isAccountSync)
+          .whenComplete(() => _pairApprovalFutures.remove(clientName));
+      _pairApprovalFutures[clientName] = pending;
+    }
+    if (!await pending) {
+      return _errorResponse('对方未确认本次同步请求', status: 403);
+    }
+    _approvedClients.add(clientName);
+    return null;
+  }
+
+  Future<bool> _requestPairApproval(
+    String clientName,
+    bool isAccountSync,
+  ) async {
+    try {
+      return await Utils.showAlertDialog(
+        isAccountSync
+            ? '设备"$clientName"请求同步登录账号（含登录凭据），是否允许？'
+            : '设备"$clientName"请求写入本机数据，是否允许？',
+        title: "同步配对确认",
+        confirm: "允许",
+        cancel: "拒绝",
+      ).timeout(_pairApprovalTimeout);
+    } catch (_) {
+      // 超时或弹窗失败（如页面已销毁）都按拒绝处理
+      return false;
+    }
   }
 
   /// 写接口鉴权：只放行在 /info 握手中拿到本次令牌的客户端。
@@ -420,7 +483,7 @@ class SyncService extends GetxService {
       );
 
       var body = await _readLimitedBody(request);
-      var jsonBody = json.decode(body);
+      var jsonBody = await Utils.decodeJsonInIsolate(body);
       // 先完整解析再覆盖写入：解析失败不清空本地数据
       final users = <FollowUser>[];
       for (var item in jsonBody) {
@@ -446,7 +509,7 @@ class SyncService extends GetxService {
       );
 
       var body = await _readLimitedBody(request);
-      var jsonBody = json.decode(body);
+      var jsonBody = await Utils.decodeJsonInIsolate(body);
       // 先完整解析再覆盖写入：解析失败不清空本地数据
       final tags = <FollowUserTag>[];
       for (var item in jsonBody) {
@@ -469,7 +532,7 @@ class SyncService extends GetxService {
         request.requestedUri.queryParameters['overlay'] ?? '0',
       );
       var body = await _readLimitedBody(request);
-      var jsonBody = json.decode(body);
+      var jsonBody = await Utils.decodeJsonInIsolate(body);
       // 先完整解析再覆盖写入：解析失败不清空本地数据
       final histories = <History>[];
       for (var item in jsonBody) {
@@ -493,7 +556,7 @@ class SyncService extends GetxService {
         request.requestedUri.queryParameters['overlay'] ?? '0',
       );
       var body = await _readLimitedBody(request);
-      var jsonBody = json.decode(body);
+      var jsonBody = await Utils.decodeJsonInIsolate(body);
       if (overlay == 1) {
         AppSettingsController.instance.clearShieldList();
       }
@@ -511,7 +574,7 @@ class SyncService extends GetxService {
   Future<shelf.Response> _syncBiliAccountReuqest(shelf.Request request) async {
     try {
       var body = await _readLimitedBody(request);
-      var jsonBody = json.decode(body);
+      var jsonBody = await Utils.decodeJsonInIsolate(body);
       var cookie = jsonBody['cookie'];
       BiliBiliAccountService.instance.setCookie(cookie);
       BiliBiliAccountService.instance.loadUserInfo();

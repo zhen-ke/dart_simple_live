@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:device_info_plus/device_info_plus.dart';
@@ -12,9 +13,10 @@ import 'package:simple_live_app/app/utils.dart';
 class Log {
   static LogFileWriter? logFileWriter;
 
-  /// 是否输出日志：release 默认关闭，用户开启“日志记录”后打开。
+  /// 是否输出日志：debug 默认开启；profile 用于性能测量，必须默认静默；
+  /// release 仅在用户开启"日志记录"后打开。
   /// 文件写入仍由 [logFileWriter] 是否存在控制。
-  static bool enabled = !kReleaseMode;
+  static bool enabled = kDebugMode;
 
   static void initWriter() {
     logFileWriter ??= LogFileWriter();
@@ -24,23 +26,44 @@ class Log {
   static void disposeWriter() {
     logFileWriter?.close();
     logFileWriter = null;
-    enabled = !kReleaseMode;
+    enabled = kDebugMode;
   }
 
-  static void writeLog(content, [Level level = Level.info]) {
+  static void writeLog(Object content, [Level level = Level.info]) {
     if (!enabled) return;
     logFileWriter?.write(
       "[${level.name.toUpperCase()}] $_currentTime：$content",
     );
   }
 
+  /// 崩溃文件上限：只保留最近一段，超出即重写，避免无界增长
+  static const int _maxCrashFileBytes = 64 * 1024;
+
   /// 致命错误：不受普通日志开关影响，至少输出到控制台；
-  /// 用户开启日志文件时同时落盘，便于启动失败/未捕获异常定位。
+  /// 用户开启日志文件时同时落盘。此外无论开关状态，
+  /// 都追加到固定崩溃文件（见 [_persistCrash]），release 下的
+  /// 偶发崩溃才能被导出定位，而不是只存在于控制台里
   static void crash(Object error, StackTrace stackTrace) {
     final message =
         "[FATAL] ${DateTime.now().toIso8601String()} $error\n$stackTrace";
     debugPrint(message);
     logFileWriter?.write(message);
+    unawaited(_persistCrash(message));
+  }
+
+  /// 崩溃记录走惰性 IO：只在真的发生崩溃时才触碰磁盘。
+  /// 写失败必须静默——崩溃处理器里再抛异常就是二次事故
+  static Future<void> _persistCrash(String message) async {
+    try {
+      var supportDir = await getApplicationSupportDirectory();
+      var file = File("${supportDir.path}/crash/crash.log");
+      if (await file.exists() && await file.length() > _maxCrashFileBytes) {
+        await file.writeAsString("$message\r\n");
+        return;
+      }
+      await file.parent.create(recursive: true);
+      await file.writeAsString("$message\r\n", mode: FileMode.append);
+    } catch (_) {}
   }
 
   static RxList<DebugLogModel> debugLogs = <DebugLogModel>[].obs;

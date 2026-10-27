@@ -8,6 +8,8 @@ environment:
 dependencies:
   simple_live_core:
     path: ../simple_live_core
+  simple_live_shared:
+    path: ../simple_live_shared
   # 图标
   cupertino_icons: ^1.0.8
   remixicon: ^1.4.1 #Remix图标
@@ -21,8 +23,8 @@ dependencies:
   intl: ^0.20.2 #国际化
   qr_flutter: ^4.1.0 #二维码生成
   dynamic_color: ^1.8.1 #动态颜色
-  path: any
-  collection: any
+  path: ^1.9.0 #与 Flutter SDK 携带版本对齐
+  collection: ^1.19.0 #与 Flutter SDK 携带版本对齐
   udp: ^5.0.3 #UDP
   uuid: ^4.5.2 #UUID
   webdav_client: ^1.2.2 # WebDAV

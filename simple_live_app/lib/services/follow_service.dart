@@ -89,23 +89,20 @@ class FollowService extends GetxService {
 
   // 根据标签筛选数据
   void filterDataByTag(FollowUserTag tag) {
-    curTagFollowList.clear();
-    // 用一个新的列表来存储需要删除的 userId
-    List<String> toRemove = [];
-    for (var id in tag.userId) {
-      if (followList.any((x) => x.id == id)) {
-        // 找到对应的 followUser 添加到 curTagFollowList
-        curTagFollowList.add(followList.firstWhere((x) => x.id == id));
-      } else {
-        // 标记要删除的 id
-        toRemove.add(id);
-      }
-    }
-    // 双向确认用户取消关注后标签内是否还有该用户
-    // 在遍历结束后统一移除不在 followList 中的 id
-    tag.userId.removeWhere((id) => toRemove.contains(id));
-    // 更新数据库
-    if (toRemove.isNotEmpty) {
+    // 关注列表按 id 建索引：标签成员与列表的匹配从 O(n*m) 降为 O(n+m)
+    final followById = {for (var item in followList) item.id: item};
+    curTagFollowList
+      ..clear()
+      ..addAll({
+        for (var id in tag.userId)
+          if (followById.containsKey(id)) followById[id]!,
+      });
+    // 双向确认用户取消关注后标签内是否还有该用户，
+    // 统一移除不在 followList 中的 id 并落盘
+    final knownIds = followById.keys.toSet();
+    final removed = tag.userId.where((id) => !knownIds.contains(id)).toList();
+    if (removed.isNotEmpty) {
+      tag.userId.removeWhere(knownIds.contains);
       unawaited(DBService.instance.updateFollowTag(tag));
     }
     // 标签内排序

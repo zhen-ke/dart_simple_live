@@ -1,3 +1,5 @@
+@Tags(['network'])
+library;
 import 'package:simple_live_core/simple_live_core.dart';
 import 'package:test/test.dart';
 

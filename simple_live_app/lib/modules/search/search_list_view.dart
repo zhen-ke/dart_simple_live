@@ -4,7 +4,7 @@ import 'package:get/get.dart';
 import 'package:simple_live_app/app/app_style.dart';
 import 'package:simple_live_app/modules/search/search_list_controller.dart';
 import 'package:simple_live_app/routes/app_navigation.dart';
-import 'package:simple_live_app/widgets/keep_alive_wrapper.dart';
+import 'package:simple_live_shared/widgets/keep_alive_wrapper.dart';
 import 'package:simple_live_app/widgets/live_room_card.dart';
 import 'package:simple_live_app/widgets/net_image.dart';
 import 'package:simple_live_app/widgets/page_grid_view.dart';
@@ -12,7 +12,7 @@ import 'package:simple_live_core/simple_live_core.dart';
 
 class SearchListView extends StatelessWidget {
   final String tag;
-  const SearchListView(this.tag, {Key? key}) : super(key: key);
+  const SearchListView(this.tag, {super.key});
   SearchListController get controller =>
       Get.find<SearchListController>(tag: tag);
   @override

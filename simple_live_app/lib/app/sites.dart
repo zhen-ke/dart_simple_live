@@ -30,10 +30,20 @@ class Sites {
     ),
   };
 
+  /// 缓存与失效键：siteSort 变化时重建。
+  /// 首页/分类/搜索每次 build 都会读它，重排序前没必要反复 map+toList
+  static List<Site>? _supportSitesCache;
+  static String _supportSitesSortKey = "";
+
   static List<Site> get supportSites {
-    return AppSettingsController.instance.siteSort
-        .map((key) => allSites[key]!)
-        .toList();
+    final sort = AppSettingsController.instance.siteSort.join(",");
+    if (_supportSitesCache == null || sort != _supportSitesSortKey) {
+      _supportSitesSortKey = sort;
+      _supportSitesCache = AppSettingsController.instance.siteSort
+          .map((key) => allSites[key]!)
+          .toList();
+    }
+    return _supportSitesCache!;
   }
 }
 

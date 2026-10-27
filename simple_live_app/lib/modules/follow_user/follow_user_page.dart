@@ -15,7 +15,7 @@ import 'package:simple_live_app/widgets/follow_user_item.dart';
 import 'package:simple_live_app/widgets/page_grid_view.dart';
 
 class FollowUserPage extends GetView<FollowUserController> {
-  const FollowUserPage({Key? key}) : super(key: key);
+  const FollowUserPage({super.key});
 
   @override
   Widget build(BuildContext context) {

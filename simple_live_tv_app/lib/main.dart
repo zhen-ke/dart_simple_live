@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui' show PlatformDispatcher;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -17,7 +16,7 @@ import 'package:simple_live_tv_app/app/controller/app_settings_controller.dart';
 import 'package:simple_live_tv_app/app/log.dart';
 import 'package:simple_live_tv_app/app/utils.dart';
 import 'package:simple_live_tv_app/models/db/follow_user.dart';
-import 'package:simple_live_tv_app/models/db/history.dart';
+import 'package:simple_live_shared/models/db/history.dart';
 import 'package:simple_live_tv_app/routes/app_pages.dart';
 import 'package:simple_live_tv_app/routes/route_path.dart';
 import 'package:simple_live_tv_app/services/bilibili_account_service.dart';
@@ -106,8 +105,10 @@ class BootFailureApp extends StatelessWidget {
 
 Future initServices() async {
   //日志信息
-  CoreLog.enableLog = !kReleaseMode;
-  CoreLog.requestLogType = RequestLogType.short;
+  // debug 全开；profile 用于性能测量必须默认静默，release 保持关闭
+  CoreLog.enableLog = kDebugMode;
+  CoreLog.requestLogType =
+      kDebugMode ? RequestLogType.short : RequestLogType.none;
   CoreLog.onPrintLog = (level, msg) {
     switch (level) {
       case Level.debug:

@@ -4,6 +4,13 @@
 # core 是两端共用的依赖，规则不一致会让"只在 core 里漏 await"逃过检查。
 include: package:lints/recommended.yaml
 
+analyzer:
+  exclude:
+    # 嵌套子包有自己的 pubspec，在 core 根目录全量分析时没有独立的
+    # package_config，会报 8 个 uri_does_not_exist 假 error 打断整个结果；
+    # 它作为 path 依赖在 core 自身代码里已被正常解析与使用
+    - packages/**
+
 linter:
   rules:
     - unawaited_futures

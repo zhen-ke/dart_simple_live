@@ -234,7 +234,7 @@ class DouyinDanmaku with DanmakuConnection implements LiveDanmaku {
     webScoketUtils?.sendMessage(obj.writeToBuffer());
   }
 
-  void joinRoom(args) {
+  void joinRoom(Object? args) {
     var obj = PushFrame();
     obj.payloadType = 'hb';
     webScoketUtils?.sendMessage(obj.writeToBuffer());

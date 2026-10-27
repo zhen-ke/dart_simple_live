@@ -5,9 +5,18 @@ class CoreError extends Error {
   /// 错误信息
   final String message;
 
+  /// 是否为主动取消（CancelToken 触发）：
+  /// 调用方可据此区分"上游取消"与真实网络失败
+  final bool isCancel;
+
+  /// 被包装的原始异常：HTTP 层统一转成 CoreError 时保留根因，便于诊断
+  final Object? cause;
+
   CoreError(
     this.message, {
     this.statusCode = 0,
+    this.isCancel = false,
+    this.cause,
   });
   @override
   String toString() {

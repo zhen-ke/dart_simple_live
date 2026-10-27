@@ -8,7 +8,7 @@ import 'package:simple_live_app/app/app_style.dart';
 import 'package:simple_live_app/app/log.dart';
 
 class DebugLogPage extends StatelessWidget {
-  const DebugLogPage({Key? key}) : super(key: key);
+  const DebugLogPage({super.key});
 
   @override
   Widget build(BuildContext context) {

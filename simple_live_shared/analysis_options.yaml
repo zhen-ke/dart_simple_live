@@ -1,0 +1,24 @@
+# 静态分析配置。
+#
+# 与 app 端保持同一套规则，避免两端因为 lint 门槛不同再次出现"只改了一边"。
+# 基线 flutter_lints 已包含 avoid_print 等基础规则。
+#
+# 实测基线（2026-10，flutter analyze；dart fix --apply 已清空机械项）：
+# 全量 126 条告警，其中 126 条来自下面两条规则（unawaited 50 / discarded 76）。
+# 绝大多数是 UI 与平台侧"发完就不管"的调用，没有可恢复的失败路径。
+# 存量暂不清理，规则用于拦住新代码里的漏 await。
+analyzer:
+  exclude:
+    - build/**
+    - android/**
+    - windows/**
+
+include: package:flutter_lints/flutter.yaml
+
+linter:
+  rules:
+    # async 函数里漏 await：Future 被创建后直接丢弃
+    - unawaited_futures
+    # 非 async 上下文里丢弃 Future：覆盖回调、构造函数、初始化里的漏 await。
+    # 确属"发射后不管"的调用请显式写 unawaited(...)，让意图可见。
+    - discarded_futures

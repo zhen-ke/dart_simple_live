@@ -1,6 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:simple_live_app/requests/custom_log_interceptor.dart';
-import 'package:simple_live_app/requests/http_error.dart';
+import 'package:simple_live_shared/requests/http_error.dart';
 
 class HttpClient {
   static HttpClient? _httpUtil;
@@ -20,6 +20,32 @@ class HttpClient {
       ),
     );
     dio.interceptors.add(CustomLogInterceptor());
+  }
+
+  /// 统一把底层异常转成 HttpError：
+  /// - cancel 保留取消语义（isCancel），调用方可区分"主动取消"与真失败
+  /// - badResponse 保留服务端状态码
+  /// - 超时/连接失败给出可读信息，原始异常挂在 cause 上不丢失
+  HttpError _wrapError(Object e) {
+    if (e is DioException) {
+      if (e.type == DioExceptionType.cancel) {
+        return HttpError("请求已取消", isCancel: true, cause: e);
+      }
+      if (e.type == DioExceptionType.badResponse) {
+        return HttpError(
+          e.message ?? "",
+          statusCode: e.response?.statusCode ?? 0,
+          cause: e,
+        );
+      }
+      if (e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.sendTimeout ||
+          e.type == DioExceptionType.receiveTimeout) {
+        return HttpError("连接超时，请检查网络后重试", cause: e);
+      }
+      return HttpError("网络连接失败，请检查网络后重试", cause: e);
+    }
+    return HttpError("网络请求失败", cause: e);
   }
 
   /// Get请求，返回String
@@ -46,12 +72,7 @@ class HttpClient {
       );
       return result.data;
     } catch (e) {
-      if (e is DioException && e.type == DioExceptionType.badResponse) {
-        throw HttpError(e.message ?? "",
-            statusCode: e.response?.statusCode ?? 0);
-      } else {
-        throw HttpError("发送GET请求失败");
-      }
+      throw _wrapError(e);
     }
   }
 
@@ -79,12 +100,7 @@ class HttpClient {
       );
       return result.data;
     } catch (e) {
-      if (e is DioException && e.type == DioExceptionType.badResponse) {
-        throw HttpError(e.message ?? "",
-            statusCode: e.response?.statusCode ?? 0);
-      } else {
-        throw HttpError("发送GET请求失败");
-      }
+      throw _wrapError(e);
     }
   }
 
@@ -112,12 +128,7 @@ class HttpClient {
       );
       return result;
     } catch (e) {
-      if (e is DioException && e.type == DioExceptionType.badResponse) {
-        throw HttpError(e.message ?? "",
-            statusCode: e.response?.statusCode ?? 0);
-      } else {
-        throw HttpError("发送GET请求失败");
-      }
+      throw _wrapError(e);
     }
   }
 
@@ -152,12 +163,7 @@ class HttpClient {
       );
       return result.data;
     } catch (e) {
-      if (e is DioException && e.type == DioExceptionType.badResponse) {
-        throw HttpError(e.message ?? "",
-            statusCode: e.response?.statusCode ?? 0);
-      } else {
-        throw HttpError("发送POST请求失败");
-      }
+      throw _wrapError(e);
     }
   }
 
@@ -186,10 +192,10 @@ class HttpClient {
       return result;
     } catch (e) {
       if (e is DioException && e.type == DioExceptionType.badResponse) {
+        // HEAD 只用于探测/取 cookie，badResponse 原样带回给调用方判断
         return e.response!;
-      } else {
-        throw HttpError("发送HEAD请求失败");
       }
+      throw _wrapError(e);
     }
   }
 }

@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:remixicon/remixicon.dart';
@@ -23,8 +22,8 @@ class FollowUserItem extends StatefulWidget {
     this.onLongPress,
     this.playing = false,
     this.cardMode = false,
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   State<FollowUserItem> createState() => _FollowUserItemState();
@@ -195,7 +194,7 @@ class _FollowUserItemState extends State<FollowUserItem> {
           headerGradient = LinearGradient(
             colors: [
               Theme.of(context).colorScheme.primary,
-              Theme.of(context).colorScheme.primary.withOpacity(0.8),
+              Theme.of(context).colorScheme.primary.withValues(alpha: 0.8),
             ],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
@@ -212,16 +211,16 @@ class _FollowUserItemState extends State<FollowUserItem> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
           curve: Curves.easeOutCubic,
-          transform: Matrix4.identity()..translate(0.0, _isHovered ? -5.0 : 0.0),
+          transform: Matrix4.identity()..translateByDouble(0.0, _isHovered ? -5.0 : 0.0, 0.0, 1.0),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
                 color: isLive
                     ? (widget.item.siteId == 'bilibili'
-                        ? const Color(0xffff6699).withOpacity(_isHovered ? 0.25 : 0.08)
-                        : Colors.black.withOpacity(_isHovered ? 0.12 : 0.04))
-                    : Colors.black.withOpacity(_isHovered ? 0.08 : 0.02),
+                        ? const Color(0xffff6699).withValues(alpha: _isHovered ? 0.25 : 0.08)
+                        : Colors.black.withValues(alpha: _isHovered ? 0.12 : 0.04))
+                    : Colors.black.withValues(alpha: _isHovered ? 0.08 : 0.02),
                 blurRadius: _isHovered ? 16 : 8,
                 offset: Offset(0, _isHovered ? 8 : 4),
               ),
@@ -237,8 +236,8 @@ class _FollowUserItemState extends State<FollowUserItem> {
                 borderRadius: BorderRadius.circular(16),
                 side: BorderSide(
                   color: _isHovered
-                      ? Theme.of(context).colorScheme.primary.withOpacity(0.3)
-                      : Theme.of(context).dividerColor.withOpacity(0.08),
+                      ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.3)
+                      : Theme.of(context).dividerColor.withValues(alpha: 0.08),
                   width: 1.2,
                 ),
               ),
@@ -264,10 +263,10 @@ class _FollowUserItemState extends State<FollowUserItem> {
                           return Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                             decoration: BoxDecoration(
-                              color: Colors.black.withOpacity(0.3),
+                              color: Colors.black.withValues(alpha: 0.3),
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
-                                color: Colors.white.withOpacity(0.2),
+                                color: Colors.white.withValues(alpha: 0.2),
                                 width: 0.5,
                               ),
                             ),
@@ -283,7 +282,7 @@ class _FollowUserItemState extends State<FollowUserItem> {
                                     boxShadow: isLive
                                         ? [
                                             BoxShadow(
-                                              color: const Color(0xff34c759).withOpacity(0.8),
+                                              color: const Color(0xff34c759).withValues(alpha: 0.8),
                                               blurRadius: 4,
                                               spreadRadius: 1,
                                             )
@@ -321,7 +320,7 @@ class _FollowUserItemState extends State<FollowUserItem> {
                               ),
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black.withOpacity(0.1),
+                                  color: Colors.black.withValues(alpha: 0.1),
                                   blurRadius: 6,
                                   offset: const Offset(0, 2),
                                 )
@@ -380,7 +379,7 @@ class _FollowUserItemState extends State<FollowUserItem> {
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                                 decoration: BoxDecoration(
-                                  color: Theme.of(context).colorScheme.primary.withOpacity(0.12),
+                                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: Text(
@@ -433,7 +432,7 @@ class _FollowUserItemState extends State<FollowUserItem> {
                                 child: Container(
                                   padding: const EdgeInsets.all(5),
                                   decoration: BoxDecoration(
-                                    color: Colors.black.withOpacity(0.45),
+                                    color: Colors.black.withValues(alpha: 0.45),
                                     shape: BoxShape.circle,
                                   ),
                                   child: const Icon(

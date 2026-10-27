@@ -10,7 +10,7 @@ import 'package:simple_live_app/widgets/settings/settings_number.dart';
 import 'package:simple_live_app/widgets/settings/settings_switch.dart';
 
 class DanmuSettingsPage extends StatelessWidget {
-  const DanmuSettingsPage({Key? key}) : super(key: key);
+  const DanmuSettingsPage({super.key});
 
   @override
   Widget build(BuildContext context) {

@@ -131,6 +131,21 @@ class WebScoketUtils {
     );
   }
 
+  /// 后台挂起心跳：只停心跳定时器，不动连接与重连调度。
+  /// 挂起超过两个心跳周期服务端可能已断开，
+  /// 恢复时调用方应检查是否需要直接重连
+  void suspendHeartbeat() {
+    heartBeatTimer?.cancel();
+    heartBeatTimer = null;
+  }
+
+  /// 恢复心跳：连接仍在时立即补一次心跳并重启定时器
+  void resumeHeartbeat() {
+    if (status != SocketStatus.connected || heartBeatTimer != null) return;
+    onHeartBeat?.call();
+    initHeartBeat();
+  }
+
   void receiveMessage(dynamic data) {
     //接受到一条信息才算重连成功
     reconnectTime = 0;

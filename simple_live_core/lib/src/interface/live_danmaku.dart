@@ -25,4 +25,11 @@ class LiveDanmaku {
   Future stop() {
     return Future.value();
   }
+
+  /// 后台挂起心跳：默认空实现，支持的平台由连接层覆盖。
+  /// 宿主在进入后台时调用，减少心跳带来的唤醒
+  void suspendHeartbeat() {}
+
+  /// 前台恢复心跳：默认空实现，支持的平台由连接层覆盖
+  void resumeHeartbeat() {}
 }

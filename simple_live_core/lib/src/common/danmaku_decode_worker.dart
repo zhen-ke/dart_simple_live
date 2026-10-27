@@ -238,7 +238,7 @@ class DanmakuDecodeWorker {
       // 启动流程可能已提前退出、没人 await 这个 Completer：
       // 挂一个空的错误处理，避免变成未捕获的异步异常
       unawaited(
-        ready.future.then<void>((_) {}, onError: (Object _, StackTrace __) {}),
+        ready.future.then<void>((_) {}, onError: (Object _, StackTrace _) {}),
       );
     }
     _isolate = null;
@@ -328,7 +328,13 @@ Map<String, dynamic> decodeBilibiliFrame(List<int> data) {
   try {
     final protocolVersion = _readBigEndian(data, 6, 2);
     final operation = _readBigEndian(data, 8, 4);
-    final body = data.skip(16).toList(growable: false);
+    // 16 字节协议头之后的包体：零拷贝视图代替 skip().toList()，
+    // 高热房间每秒上千帧时省掉每帧一次的列表拷贝
+    final bytes =
+        data is Uint8List ? data : Uint8List.fromList(data);
+    final body = data.length > 16
+        ? Uint8List.sublistView(bytes, 16)
+        : Uint8List(0);
     if (operation == 3) {
       messages.add(<String, dynamic>{
         'kind': 'online',
@@ -364,7 +370,7 @@ Map<String, dynamic> decodeBilibiliFrame(List<int> data) {
     'messages': messages,
     'messageCount': messageCount,
     'elapsedUs': stopwatch.elapsedMicroseconds,
-    if (error != null) 'error': error,
+    'error': ?error,
   };
 }
 
@@ -475,7 +481,7 @@ Map<String, dynamic> decodeDouyinFrame(List<int> data) {
     'needAck': needAck,
     'logId': logId,
     'internalExt': internalExt,
-    if (error != null) 'error': error,
+    'error': ?error,
   };
 }
 
@@ -523,7 +529,7 @@ Map<String, dynamic> decodeHuyaFrame(List<int> data) {
     'messages': messages,
     'messageCount': messages.length,
     'elapsedUs': stopwatch.elapsedMicroseconds,
-    if (error != null) 'error': error,
+    'error': ?error,
   };
 }
 
@@ -556,7 +562,7 @@ Map<String, dynamic> decodeDouyuFrame(List<int> data) {
     'messages': messages,
     'messageCount': messages.length,
     'elapsedUs': stopwatch.elapsedMicroseconds,
-    if (error != null) 'error': error,
+    'error': ?error,
   };
 }
 

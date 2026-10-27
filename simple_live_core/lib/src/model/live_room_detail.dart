@@ -32,7 +32,7 @@ class LiveRoomDetail {
   final dynamic data;
 
   /// 弹幕连接参数：具体类型由各 LiveDanmaku 实现约定。
-  /// 允许是 Future<T>——详情可先返回让视频起播，
+  /// 允许是 `Future<T>`——详情可先返回让视频起播，
   /// 弹幕参数并行解析（B站弹幕接口较慢时即如此），
   /// 实现方在 start 内 await 其完成
   final dynamic danmakuData;

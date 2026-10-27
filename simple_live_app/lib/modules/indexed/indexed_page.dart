@@ -2,12 +2,11 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:simple_live_app/app/app_style.dart';
-import 'package:window_manager/window_manager.dart';
 
 import 'indexed_controller.dart';
 
 class IndexedPage extends GetView<IndexedController> {
-  const IndexedPage({Key? key}) : super(key: key);
+  const IndexedPage({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -34,7 +33,7 @@ class IndexedPage extends GetView<IndexedController> {
                         indicatorColor: Theme.of(context)
                             .colorScheme
                             .primary
-                            .withOpacity(0.14),
+                            .withValues(alpha: 0.14),
                         selectedIconTheme: IconThemeData(
                           color: Theme.of(context).colorScheme.primary,
                           size: 22,

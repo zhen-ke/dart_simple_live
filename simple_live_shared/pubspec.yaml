@@ -1,0 +1,18 @@
+name: simple_live_shared
+version: 1.0.0
+description: "simple_live_app 与 simple_live_tv_app 共享的模型与基础层"
+repository: https://github.com/xiaoyaocz/dart_simple_live
+publish_to: "none"
+environment:
+  sdk: '>=3.10.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # 与两端保持同一精确版本：Hive TypeAdapter 的二进制格式由它决定
+  hive: 2.2.3
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter

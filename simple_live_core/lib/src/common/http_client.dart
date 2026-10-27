@@ -26,6 +26,32 @@ class HttpClient {
     dio.interceptors.add(CustomInterceptor());
   }
 
+  /// 统一把底层异常转成 CoreError：
+  /// - cancel 保留取消语义（isCancel），调用方可区分"主动取消"与真失败
+  /// - badResponse 保留服务端状态码
+  /// - 超时/连接失败给出可读信息，原始异常挂在 cause 上不丢失
+  CoreError _wrapError(Object e) {
+    if (e is DioException) {
+      if (e.type == DioExceptionType.cancel) {
+        return CoreError("请求已取消", isCancel: true, cause: e);
+      }
+      if (e.type == DioExceptionType.badResponse) {
+        return CoreError(
+          e.message ?? "",
+          statusCode: e.response?.statusCode ?? 0,
+          cause: e,
+        );
+      }
+      if (e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.sendTimeout ||
+          e.type == DioExceptionType.receiveTimeout) {
+        return CoreError("连接超时，请检查网络后重试", cause: e);
+      }
+      return CoreError("网络连接失败，请检查网络后重试", cause: e);
+    }
+    return CoreError("网络请求失败", cause: e);
+  }
+
   /// Get请求，返回String
   /// * [url] 请求链接
   /// * [queryParameters] 请求参数
@@ -53,12 +79,7 @@ class HttpClient {
       );
       return result.data;
     } catch (e) {
-      if (e is DioException && e.type == DioExceptionType.badResponse) {
-        throw CoreError(e.message ?? "",
-            statusCode: e.response?.statusCode ?? 0);
-      } else {
-        throw CoreError("发送GET请求失败");
-      }
+      throw _wrapError(e);
     }
   }
 
@@ -89,12 +110,7 @@ class HttpClient {
       );
       return result.data;
     } catch (e) {
-      if (e is DioException && e.type == DioExceptionType.badResponse) {
-        throw CoreError(e.message ?? "",
-            statusCode: e.response?.statusCode ?? 0);
-      } else {
-        throw CoreError("发送GET请求失败");
-      }
+      throw _wrapError(e);
     }
   }
 
@@ -132,12 +148,7 @@ class HttpClient {
       );
       return result.data;
     } catch (e) {
-      if (e is DioException && e.type == DioExceptionType.badResponse) {
-        throw CoreError(e.message ?? "",
-            statusCode: e.response?.statusCode ?? 0);
-      } else {
-        throw CoreError("发送POST请求失败");
-      }
+      throw _wrapError(e);
     }
   }
 
@@ -169,11 +180,10 @@ class HttpClient {
       return result;
     } catch (e) {
       if (e is DioException && e.type == DioExceptionType.badResponse) {
-        //throw CoreError(e.message, statusCode: e.response?.statusCode ?? 0);
+        // HEAD 只用于探测/取 cookie，badResponse 原样带回给调用方判断
         return e.response!;
-      } else {
-        throw CoreError("发送HEAD请求失败");
       }
+      throw _wrapError(e);
     }
   }
 }

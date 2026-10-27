@@ -32,9 +32,11 @@ class Sites {
     ),
   };
 
-  static List<Site> get supportSites {
-    return allSites.values.toList();
-  }
+  /// 缓存：TV 首页每次 build 都会读它，没必要反复 toList。
+  /// allSites 是不可变的静态表，缓存值不会过期
+  static final List<Site> _supportSitesCache = allSites.values.toList();
+
+  static List<Site> get supportSites => _supportSitesCache;
 }
 
 class Site {

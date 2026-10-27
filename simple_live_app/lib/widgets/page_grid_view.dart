@@ -30,8 +30,8 @@ class PageGridView extends StatelessWidget {
     this.mainAxisSpacing = 0.0,
     this.showPCRefreshButton = true,
     required this.crossAxisCount,
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -52,14 +52,22 @@ class PageGridView extends StatelessWidget {
             firstRefresh: firstRefresh,
             onLoad: pageController.loadData,
             onRefresh: pageController.refreshData,
-            child: MasonryGridView.count(
-              padding: padding,
-              itemCount: pageController.list.length,
-              itemBuilder: itemBuilder,
-              crossAxisCount: crossAxisCount,
-              crossAxisSpacing: crossAxisSpacing,
-              mainAxisSpacing: mainAxisSpacing,
-            ),
+            // 单列时瀑布流布局没有任何意义，直接用 ListView：
+            // 省掉每个子项的瀑布流布局计算
+            child: crossAxisCount == 1
+                ? ListView.builder(
+                    padding: padding,
+                    itemCount: pageController.list.length,
+                    itemBuilder: itemBuilder,
+                  )
+                : MasonryGridView.count(
+                    padding: padding,
+                    itemCount: pageController.list.length,
+                    itemBuilder: itemBuilder,
+                    crossAxisCount: crossAxisCount,
+                    crossAxisSpacing: crossAxisSpacing,
+                    mainAxisSpacing: mainAxisSpacing,
+                  ),
           ),
         ),
         Positioned(
@@ -82,13 +90,13 @@ class PageGridView extends StatelessWidget {
                     foregroundColor:
                         Theme.of(context).textTheme.bodyLarge?.color,
                     elevation: 4,
-                    shadowColor: Colors.black.withOpacity(0.2),
+                    shadowColor: Colors.black.withValues(alpha: 0.2),
                     padding: const EdgeInsets.symmetric(
                         horizontal: 24, vertical: 12),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(24),
                       side: BorderSide(
-                        color: Theme.of(context).dividerColor.withOpacity(0.1),
+                        color: Theme.of(context).dividerColor.withValues(alpha: 0.1),
                         width: 1,
                       ),
                     ),

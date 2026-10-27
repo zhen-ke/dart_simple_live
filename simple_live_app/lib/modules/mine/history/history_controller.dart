@@ -1,6 +1,6 @@
 import 'package:simple_live_app/app/controller/base_controller.dart';
 import 'package:simple_live_app/app/utils.dart';
-import 'package:simple_live_app/models/db/history.dart';
+import 'package:simple_live_shared/models/db/history.dart';
 import 'package:simple_live_app/services/db_service.dart';
 
 class HistoryController extends BasePageController<History> {

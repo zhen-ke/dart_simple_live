@@ -3,12 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:simple_live_app/app/app_style.dart';
 import 'package:simple_live_app/modules/category/detail/category_detail_controller.dart';
-import 'package:simple_live_app/widgets/keep_alive_wrapper.dart';
+import 'package:simple_live_shared/widgets/keep_alive_wrapper.dart';
 import 'package:simple_live_app/widgets/live_room_card.dart';
 import 'package:simple_live_app/widgets/page_grid_view.dart';
 
 class CategoryDetailPage extends GetView<CategoryDetailController> {
-  const CategoryDetailPage({Key? key}) : super(key: key);
+  const CategoryDetailPage({super.key});
 
   @override
   Widget build(BuildContext context) {

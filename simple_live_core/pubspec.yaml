@@ -17,9 +17,12 @@ dependencies:
   tars_dart:
     path: ./packages/tars_dart
   fixnum: ^1.1.0
+  # git 依赖锁定到具体 commit：上游 force push / 改 API 不再影响构建可复现性。
+  # 升级时先在本地验证，再有意更新这个 ref
   dart_quickjs:
     git:
       url: https://github.com/xiaoyaocz/dart_quickjs
+      ref: a31682801e209f925cdb90fcf4e379e512b713d2
 
 dev_dependencies: 
   lints: ^6.1.0

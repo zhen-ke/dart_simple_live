@@ -8,8 +8,9 @@ import 'package:simple_live_tv_app/app/controller/app_settings_controller.dart';
 import 'package:simple_live_tv_app/app/controller/base_controller.dart';
 import 'package:simple_live_tv_app/app/event_bus.dart';
 import 'package:simple_live_tv_app/app/log.dart';
+import 'package:simple_live_tv_app/app/utils.dart';
 import 'package:simple_live_tv_app/models/db/follow_user.dart';
-import 'package:simple_live_tv_app/models/db/history.dart';
+import 'package:simple_live_shared/models/db/history.dart';
 import 'package:simple_live_tv_app/services/bilibili_account_service.dart';
 import 'package:simple_live_tv_app/services/db_service.dart';
 import 'package:simple_live_tv_app/services/signalr_service.dart';
@@ -112,7 +113,7 @@ class SyncController extends BaseController {
 
   void onReceiveFavorite(bool overlay, String data) async {
     try {
-      var jsonBody = json.decode(data);
+      var jsonBody = await Utils.decodeJsonInIsolate(data);
       // 先解析成实体再交给 DBService：解析失败不会清空本地数据
       final users = (jsonBody as List)
           .map((item) => FollowUser.fromJson(item))
@@ -129,7 +130,7 @@ class SyncController extends BaseController {
 
   void onReceiveHistory(bool overlay, String data) async {
     try {
-      var jsonBody = json.decode(data);
+      var jsonBody = await Utils.decodeJsonInIsolate(data);
       final histories = (jsonBody as List)
           .map((item) => History.fromJson(item))
           .toList();
@@ -144,7 +145,7 @@ class SyncController extends BaseController {
 
   void onReceiveShieldWord(bool overlay, String data) async {
     try {
-      var jsonBody = json.decode(data);
+      var jsonBody = await Utils.decodeJsonInIsolate(data);
       if (overlay) {
         AppSettingsController.instance.clearShieldList();
       }
@@ -160,7 +161,7 @@ class SyncController extends BaseController {
 
   void onReceiveBiliAccount(bool overlay, String data) async {
     try {
-      var jsonBody = json.decode(data);
+      var jsonBody = await Utils.decodeJsonInIsolate(data);
       var cookie = jsonBody['cookie'];
       BiliBiliAccountService.instance.setCookie(cookie);
       BiliBiliAccountService.instance.loadUserInfo();

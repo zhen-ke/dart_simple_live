@@ -7,11 +7,11 @@ import 'package:get/get.dart';
 import 'package:simple_live_app/app/app_style.dart';
 import 'package:simple_live_app/modules/search/douyin/douyin_search_controller.dart';
 import 'package:simple_live_app/routes/app_navigation.dart';
-import 'package:simple_live_app/widgets/keep_alive_wrapper.dart';
+import 'package:simple_live_shared/widgets/keep_alive_wrapper.dart';
 import 'package:simple_live_app/widgets/status/app_loadding_widget.dart';
 
 class DouyinSearchView extends StatelessWidget {
-  const DouyinSearchView({Key? key}) : super(key: key);
+  const DouyinSearchView({super.key});
   DouyinSearchController get controller => Get.find<DouyinSearchController>();
 
   @override

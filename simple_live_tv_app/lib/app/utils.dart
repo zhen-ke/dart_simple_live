@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:isolate';
+
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:intl/intl.dart';
@@ -8,6 +11,15 @@ import 'package:get/get.dart';
 import 'package:simple_live_tv_app/app/app_style.dart';
 
 class Utils {
+  /// 大列表 JSON 编码放后台 isolate：历史记录等大列表在 UI 线程
+  /// 序列化会造成可感知的掉帧
+  static Future<String> encodeJsonInIsolate(Object? value) =>
+      Isolate.run(() => jsonEncode(value));
+
+  /// 大列表 JSON 解码放后台 isolate，与 [encodeJsonInIsolate] 对称
+  static Future<dynamic> decodeJsonInIsolate(String source) =>
+      Isolate.run(() => jsonDecode(source));
+
   static late PackageInfo packageInfo;
   static DateFormat dateFormat = DateFormat("MM-dd HH:mm");
   static DateFormat dateFormatWithYear = DateFormat("yyyy-MM-dd HH:mm");

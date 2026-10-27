@@ -1,0 +1,99 @@
+name: analyze-test
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "master"
+      - "dev"
+  pull_request:
+    branches:
+      - "master"
+      - "dev"
+  schedule:
+    # 每月 1 日 UTC 20:00（北京时间 2 日 04:00）：顺带跑一次联网集成测试
+    - cron: "0 20 1 * *"
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - simple_live_core
+          - simple_live_shared
+          - simple_live_app
+          - simple_live_tv_app
+    steps:
+      # 签出代码
+      - uses: actions/checkout@v4
+
+      # Flutter 环境：与各发布 workflow 保持同版本
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.38.x"
+          cache: true
+
+      - name: Pub get (${{ matrix.package }})
+        working-directory: ${{ matrix.package }}
+        run: flutter pub get
+
+      # 默认对 error/warning 失败；info 存量见各包 analysis_options 基线注释
+      - name: Analyze (${{ matrix.package }})
+        working-directory: ${{ matrix.package }}
+        run: flutter analyze --no-pub
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.38.x"
+          cache: true
+
+      # core 是纯 Dart 包：跑全部离线用例（解码/生命周期/QuickJS），
+      # 联网集成测试打 network tag 单独调度
+      - name: Core offline tests
+        working-directory: simple_live_core
+        run: |
+          dart pub get
+          dart test --exclude-tags network
+
+      - name: Shared tests
+        working-directory: simple_live_shared
+        run: |
+          flutter pub get
+          flutter test
+
+      - name: App tests
+        working-directory: simple_live_app
+        run: |
+          flutter pub get
+          flutter test
+
+      - name: TV app tests
+        working-directory: simple_live_tv_app
+        run: |
+          flutter pub get
+          flutter test
+
+  # 联网集成测试依赖真实站点接口，只在定时/手动触发时执行
+  network-test:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.38.x"
+          cache: true
+
+      - name: Core network integration tests
+        working-directory: simple_live_core
+        run: |
+          dart pub get
+          dart test --tags network

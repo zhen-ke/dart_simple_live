@@ -13,8 +13,6 @@ import 'package:image_gallery_saver_plus/image_gallery_saver_plus.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:canvas_danmaku/canvas_danmaku.dart';
-import 'package:volume_controller/volume_controller.dart';
-import 'package:screen_brightness/screen_brightness.dart';
 import 'package:simple_live_app/app/controller/app_settings_controller.dart';
 import 'package:simple_live_app/app/controller/base_controller.dart';
 import 'package:simple_live_app/app/custom_throttle.dart';
@@ -151,11 +149,8 @@ mixin PlayerMixin {
   );
 }
 
-/// 控制器可见性评估周期
-const Duration _kControlsEvaluateInterval = Duration(milliseconds: 250);
-
-/// 空闲满多少拍后自动隐藏控制器（8 × 250ms = 2s）
-const int _kControlsHideDelayTicks = 8;
+/// 控制器自动隐藏延时（原周期评估器的 8 × 250ms = 2s）
+const Duration _kControlsHideDelay = Duration(milliseconds: 2000);
 
 mixin PlayerStateMixin on PlayerMixin {
   ///音量控制条计时器
@@ -194,13 +189,12 @@ mixin PlayerStateMixin on PlayerMixin {
   /// 提示底部Tip文本
   RxString bottomTipText = "".obs;
 
-  /// 控制器可见性评估定时器：周期性根据「空闲拍数」推导显隐，
-  /// 交互事件只负责重置计数——不存在计时器被取消后无人重武装的死态
-  /// - 点击视频/控制条、指针在播放区或控制条上移动，都会重置空闲计数
-  /// - 空闲满 [_kControlsHideDelayTicks] 拍自动隐藏，指针停在控制条上也不例外
-  /// - 锁定时暂停自动隐藏，锁定按钮的显隐完全由点击控制
-  int _controlsIdleTicks = _kControlsHideDelayTicks; // 初始视为已空闲
-  Timer? _controlsEvaluateTimer;
+  /// 控制器自动隐藏定时器：一次性 timer，由交互事件重臂。
+  /// 相比周期评估器，空闲期间不再每 250ms 醒一次，
+  /// 交互（点击/指针移动/进入控制条）都会重新计时
+  /// - 空闲满 [_kControlsHideDelay] 自动隐藏，指针停在控制条上也不例外
+  /// - 锁定时不再武装自动隐藏，锁定按钮的显隐完全由点击控制
+  Timer? _controlsHideTimer;
 
   /// 控制条（毛玻璃气泡/底栏）上的指针移入/移动/移出：均视为交互
   void onControlsBarEnter(PointerEnterEvent event) => markControlsActivity();
@@ -228,7 +222,7 @@ mixin PlayerStateMixin on PlayerMixin {
 
   /// 隐藏控制器（点击切换/锁定/小窗等主动隐藏）
   void hideControls() {
-    _controlsIdleTicks = _kControlsHideDelayTicks;
+    _controlsHideTimer?.cancel();
     showControlsState.value = false;
   }
 
@@ -243,38 +237,34 @@ mixin PlayerStateMixin on PlayerMixin {
 
   /// 显示控制器（主动操作：单击视频、解锁），不受锁定状态限制
   void showControls() {
-    _controlsIdleTicks = 0;
     showControlsState.value = true;
+    _armControlsHide();
   }
 
-  /// 记录一次控制器交互：重置空闲计数，未锁定时立即显示
+  /// 记录一次控制器交互：未锁定时立即显示并重新计时
   /// - 桌面端指针移动（播放区/控制条）、控制条上的按下都走这里
   void markControlsActivity() {
-    _controlsIdleTicks = 0;
-    if (!lockControlsState.value && !showControlsState.value) {
+    if (lockControlsState.value) {
+      return;
+    }
+    if (!showControlsState.value) {
       showControlsState.value = true;
     }
+    _armControlsHide();
   }
 
-  /// 启动可见性评估器（进房时调用一次）
+  /// 重新武装自动隐藏：2 秒内没有任何交互就隐藏控制器
+  void _armControlsHide() {
+    _controlsHideTimer?.cancel();
+    _controlsHideTimer = Timer(_kControlsHideDelay, () {
+      if (lockControlsState.value) return;
+      showControlsState.value = false;
+    });
+  }
+
+  /// 进房初始化调用点：初始控制器未显示，无需武装，仅保持幂等取消
   void startControlsEvaluator() {
-    _controlsEvaluateTimer?.cancel();
-    _controlsEvaluateTimer = Timer.periodic(
-      _kControlsEvaluateInterval,
-      (_) => _evaluateControlsVisibility(),
-    );
-  }
-
-  /// 周期推导控制器可见性：空闲满 2 秒自动隐藏；锁定时只累计不应用
-  void _evaluateControlsVisibility() {
-    if (_controlsIdleTicks < _kControlsHideDelayTicks) {
-      _controlsIdleTicks++;
-    }
-    if (lockControlsState.value) return;
-    final visible = _controlsIdleTicks < _kControlsHideDelayTicks;
-    if (visible != showControlsState.value) {
-      showControlsState.value = visible;
-    }
+    _controlsHideTimer?.cancel();
   }
 
   void updateScaleMode() {
@@ -581,9 +571,6 @@ mixin PlayerSystemMixin on PlayerMixin, PlayerStateMixin, PlayerDanmakuMixin {
     }
     return false;
   }
-
-  Size? _lastWindowSize;
-  Offset? _lastWindowPosition;
 
   ///小窗模式()
   void enterSmallWindow() async {
@@ -941,8 +928,10 @@ class PlayerController extends BaseController
   StreamSubscription? _logSubscription;
   StreamSubscription? _playingSubscription;
 
+  /// mpv 日志订阅与事件打印的门禁：profile 用于性能测量，
+  /// 订阅 mpv log 本身就有解析开销，必须与普通日志一起默认静默
   bool get _shouldLogPlayerEvents =>
-      !kReleaseMode || AppSettingsController.instance.logEnable.value;
+      kDebugMode || AppSettingsController.instance.logEnable.value;
 
   void _updateVerticalByPlayerSize() {
     final vertical = (player.state.height ?? 9) > (player.state.width ?? 16);
@@ -1213,7 +1202,7 @@ class PlayerController extends BaseController
     disposeDanmakuController();
     _keyboardVolumeTipTimer?.cancel();
     hidevolumeTimer?.cancel();
-    _controlsEvaluateTimer?.cancel();
+    _controlsHideTimer?.cancel();
     hideSeekTipTimer?.cancel();
     _playerFocusNode?.dispose();
     _playerFocusNode = null;

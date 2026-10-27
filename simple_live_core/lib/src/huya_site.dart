@@ -14,13 +14,13 @@ class HuyaSite implements LiveSite {
   final String kUserAgent =
       "Mozilla/5.0 (Linux; Android 11; Pixel 5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.91 Mobile Safari/537.36 Edg/117.0.0.0";
 
-  static const String HYSDK_UA =
+  static const String kHysdkUa =
       "HYSDK(Windows, 30000002)_APP(pc_exe&7060000&official)_SDK(trans&2.32.3.5646)";
 
   static Map<String, String> requestHeaders =  {
       'Origin': baseUrl,
       'Referer': baseUrl,
-      'User-Agent': HYSDK_UA,
+      'User-Agent': kHysdkUa,
   };
 
   final BaseTarsHttp tupClient = BaseTarsHttp(
@@ -206,7 +206,7 @@ class HuyaSite implements LiveSite {
     } catch (e) {
       CoreLog.error(e);
     }
-    return playUserAgent ?? HYSDK_UA;
+    return playUserAgent ?? kHysdkUa;
   }
 
   @override
@@ -237,7 +237,7 @@ class HuyaSite implements LiveSite {
     // var ua = await getHuYaUA();
     return LivePlayUrl(
       urls: ls,
-      headers: {"user-agent": HYSDK_UA},
+      headers: {"user-agent": kHysdkUa},
     );
   }
 
@@ -245,7 +245,7 @@ class HuyaSite implements LiveSite {
       {String? antiCode}) async {
     antiCode ??= await getCndTokenInfoEx(line.streamName);
     antiCode = buildAntiCode(line.streamName, line.presenterUid, antiCode);
-    var url = '${line.line}/${line.streamName}.flv?${antiCode}&codec=264';
+    var url = '${line.line}/${line.streamName}.flv?$antiCode&codec=264';
     if (bitRate > 0) {
       url += "&ratio=$bitRate";
     }

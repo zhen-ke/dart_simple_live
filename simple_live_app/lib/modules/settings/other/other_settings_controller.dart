@@ -89,7 +89,7 @@ class OtherSettingsController extends BaseController {
     super.onInit();
   }
 
-  void setLogEnable(e) {
+  void setLogEnable(dynamic e) {
     AppSettingsController.instance.setLogEnable(e);
     if (e) {
       Log.initWriter();

@@ -2,7 +2,7 @@ import 'package:get/get.dart';
 import 'package:hive/hive.dart';
 import 'package:simple_live_tv_app/models/db/follow_user.dart';
 
-import 'package:simple_live_tv_app/models/db/history.dart';
+import 'package:simple_live_shared/models/db/history.dart';
 
 class DBService extends GetxService {
   static DBService get instance => Get.find<DBService>();

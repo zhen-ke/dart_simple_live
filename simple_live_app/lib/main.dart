@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:ui' show PlatformDispatcher;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -20,7 +19,7 @@ import 'package:simple_live_app/app/utils.dart';
 import 'package:simple_live_app/app/utils/listen_fourth_button.dart';
 import 'package:simple_live_app/models/db/follow_user.dart';
 import 'package:simple_live_app/models/db/follow_user_tag.dart';
-import 'package:simple_live_app/models/db/history.dart';
+import 'package:simple_live_shared/models/db/history.dart';
 import 'package:simple_live_app/modules/live_room/live_room_controller.dart';
 import 'package:simple_live_app/modules/other/debug_log_page.dart';
 import 'package:simple_live_app/routes/app_pages.dart';
@@ -194,10 +193,14 @@ Future initServices() async {
 
 void initCoreLog() {
   //日志信息
-  CoreLog.enableLog =
-      !kReleaseMode || AppSettingsController.instance.logEnable.value;
-  Log.enabled = !kReleaseMode || AppSettingsController.instance.logEnable.value;
-  CoreLog.requestLogType = RequestLogType.short;
+  // debug 全开；profile 用于性能测量必须默认静默；
+  // release 仅在用户开启"日志记录"后打开，HTTP 日志随之启停
+  final logEnabled =
+      kDebugMode || AppSettingsController.instance.logEnable.value;
+  CoreLog.enableLog = logEnabled;
+  Log.enabled = logEnabled;
+  CoreLog.requestLogType =
+      logEnabled ? RequestLogType.short : RequestLogType.none;
   CoreLog.onPrintLog = (level, msg) {
     switch (level) {
       case Level.debug:
@@ -253,6 +256,16 @@ class BootFailureApp extends StatelessWidget {
   }
 }
 
+/// fromSeed 结果缓存：MyApp 每次重建（切换任意设置项触发 Obx）都会
+/// 走到这里，相同 seed/brightness 的种子配色没必要反复计算
+final Map<String, ColorScheme> _seedSchemeCache = {};
+
+ColorScheme _seedScheme(Color seedColor, Brightness brightness) {
+  final key = "$brightness-${seedColor.toARGB32()}";
+  return _seedSchemeCache[key] ??=
+      ColorScheme.fromSeed(seedColor: seedColor, brightness: brightness);
+}
+
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -268,12 +281,8 @@ class MyApp extends StatelessWidget {
         lightColorScheme = lightDynamic;
         darkColorScheme = darkDynamic;
       } else {
-        lightColorScheme = ColorScheme.fromSeed(
-          seedColor: styleColor,
-          brightness: Brightness.light,
-        );
-        darkColorScheme = ColorScheme.fromSeed(
-            seedColor: styleColor, brightness: Brightness.dark);
+        lightColorScheme = _seedScheme(styleColor, Brightness.light);
+        darkColorScheme = _seedScheme(styleColor, Brightness.dark);
       }
       return GetMaterialApp(
         title: "Simple Live",

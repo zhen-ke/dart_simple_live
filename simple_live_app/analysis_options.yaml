@@ -4,8 +4,8 @@
 # 这里只补本项目真实踩过的两类异步问题——它们造成的都是"静默失败"：
 # 请求发出去了、结果没人接，出错也不冒泡。
 #
-# 实测基线（2026-10，flutter analyze）：
-# 全量 456 条告警，其中 352 条来自下面两条规则（unawaited 182 / discarded 170）。
+# 实测基线（2026-10，flutter analyze；dart fix --apply 已清空机械项）：
+# 全量 350 条告警，其中 345 条来自下面两条规则（unawaited 178 / discarded 167）。
 # 绝大多数是 UI 与平台侧"发完就不管"的调用——toast、导航、dismiss、弹窗、
 # SystemChrome/Wakelock 等，没有可恢复的失败路径。存量暂不逐点包 unawaited()，
 # 否则只是制造噪音；规则的实际作用是从现在起拦住新代码里的漏 await。

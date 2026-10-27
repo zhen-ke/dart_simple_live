@@ -13,7 +13,7 @@ import 'package:simple_live_app/app/event_bus.dart';
 import 'package:simple_live_app/app/log.dart';
 import 'package:simple_live_app/app/utils.dart';
 import 'package:simple_live_app/models/db/follow_user.dart';
-import 'package:simple_live_app/models/db/history.dart';
+import 'package:simple_live_shared/models/db/history.dart';
 import 'package:simple_live_app/services/bilibili_account_service.dart';
 import 'package:simple_live_app/services/db_service.dart';
 import 'package:simple_live_app/services/signalr_service.dart';
@@ -215,7 +215,8 @@ class RemoteSyncRoomController extends BaseController {
       var overlay = await showOverlayDialog();
       SmartDialog.showLoading(msg: "发送中...");
       var users = DBService.instance.getFollowList();
-      var data = json.encode(users.map((e) => e.toJson()).toList());
+      var data = await Utils.encodeJsonInIsolate(
+          users.map((e) => e.toJson()).toList());
 
       var resp = await signalR.sendContent(
         roomName: currentRoomId.value,
@@ -245,7 +246,8 @@ class RemoteSyncRoomController extends BaseController {
       var overlay = await showOverlayDialog();
       SmartDialog.showLoading(msg: "发送中...");
       var histores = DBService.instance.getHistores();
-      var data = json.encode(histores.map((e) => e.toJson()).toList());
+      var data = await Utils.encodeJsonInIsolate(
+          histores.map((e) => e.toJson()).toList());
       var resp = await signalR.sendContent(
         roomName: currentRoomId.value,
         action: "SendHistory",
@@ -274,7 +276,7 @@ class RemoteSyncRoomController extends BaseController {
       var overlay = await showOverlayDialog();
       SmartDialog.showLoading(msg: "发送中...");
       var shieldList = AppSettingsController.instance.shieldList;
-      var data = json.encode(shieldList.toList());
+      var data = await Utils.encodeJsonInIsolate(shieldList.toList());
 
       var resp = await signalR.sendContent(
         roomName: currentRoomId.value,
@@ -311,7 +313,7 @@ class RemoteSyncRoomController extends BaseController {
         roomName: currentRoomId.value,
         action: "SendBiliAccount",
         overlay: true,
-        content: json.encode({
+        content: await Utils.encodeJsonInIsolate({
           "cookie": BiliBiliAccountService.instance.cookie,
         }),
       );

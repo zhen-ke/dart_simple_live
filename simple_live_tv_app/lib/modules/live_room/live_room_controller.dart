@@ -13,7 +13,7 @@ import 'package:simple_live_tv_app/app/log.dart';
 import 'package:simple_live_tv_app/app/sites.dart';
 import 'package:simple_live_tv_app/app/utils.dart';
 import 'package:simple_live_tv_app/models/db/follow_user.dart';
-import 'package:simple_live_tv_app/models/db/history.dart';
+import 'package:simple_live_shared/models/db/history.dart';
 import 'package:simple_live_tv_app/modules/live_room/player/player_controller.dart';
 import 'package:simple_live_tv_app/services/db_service.dart';
 import 'package:simple_live_tv_app/services/follow_user_service.dart';
@@ -896,6 +896,9 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     resetRoom(Sites.allSites[nextChannel.siteId]!, nextChannel.roomId);
   }
 
+  /// 进入后台的时间：恢复时据此判断心跳停了多久
+  DateTime? _backgroundedAt;
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
@@ -904,13 +907,42 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
       Log.d("进入后台");
       //进入后台，关闭弹幕
       danmakuController?.clear();
+      // 暂停弹幕心跳：后台不再发 ping，减少唤醒与电量消耗；
+      // 连接本身保留，短时间回前台无需重连
+      _backgroundedAt = DateTime.now();
+      liveDanmaku.suspendHeartbeat();
       isBackground = true;
     } else
     //返回前台
     if (state == AppLifecycleState.resumed) {
       Log.d("返回前台");
       isBackground = false;
+      _resumeDanmakuAfterBackground();
     }
+  }
+
+  /// 前台恢复弹幕心跳：挂起超过两个心跳周期时服务端大概率已断开，
+  /// 直接重连而不是发一次注定无效的心跳
+  void _resumeDanmakuAfterBackground() {
+    final suspendedAt = _backgroundedAt;
+    _backgroundedAt = null;
+    final heartbeatMs = liveDanmaku.heartbeatTime;
+    final tooLong = suspendedAt != null &&
+        heartbeatMs > 0 &&
+        DateTime.now().difference(suspendedAt) >
+            Duration(milliseconds: heartbeatMs * 2);
+    if (tooLong) {
+      Log.d("后台时间过长，重连弹幕服务器");
+      unawaited(liveDanmaku.stop());
+      initDanmau();
+      unawaited(
+        liveDanmaku.start(detail.value?.danmakuData).catchError((e) {
+          Log.logPrint(e);
+        }),
+      );
+      return;
+    }
+    liveDanmaku.resumeHeartbeat();
   }
 
   @override

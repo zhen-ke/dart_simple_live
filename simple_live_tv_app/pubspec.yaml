@@ -11,6 +11,8 @@ dependencies:
     sdk: flutter
   simple_live_core:
     path: ../simple_live_core
+  simple_live_shared:
+    path: ../simple_live_shared
   cupertino_icons: ^1.0.2
   remixicon: ^1.0.0 #Remix图标
 
@@ -39,6 +41,7 @@ dependencies:
 
   #系统交互
   package_info_plus: ^9.0.0 #包信息
+  path_provider: ^2.1.5 #常用路径（崩溃日志落盘）
   url_launcher: ^6.3.2 #打开链接
   network_info_plus: ^7.0.0
   shelf: ^1.4.2

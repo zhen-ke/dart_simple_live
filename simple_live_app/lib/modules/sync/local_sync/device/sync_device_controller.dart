@@ -33,8 +33,10 @@ class SyncDeviceController extends BaseController {
       SmartDialog.showLoading(msg: "同步中...");
       var users = DBService.instance.getFollowList();
       var tags = DBService.instance.getFollowTagList();
-      var data = json.encode(users.map((e) => e.toJson()).toList());
-      var dataT = json.encode(tags.map((e) => e.toJson()).toList());
+      var data = await Utils.encodeJsonInIsolate(
+          users.map((e) => e.toJson()).toList());
+      var dataT = await Utils.encodeJsonInIsolate(
+          tags.map((e) => e.toJson()).toList());
       await request.syncFollow(client, data, overlay: overlay);
       // 标签和关注必须同时同步
       await request.syncTag(client, dataT, overlay: overlay);
@@ -52,7 +54,8 @@ class SyncDeviceController extends BaseController {
       var overlay = await showOverlayDialog();
       SmartDialog.showLoading(msg: "同步中...");
       var histores = DBService.instance.getHistores();
-      var data = json.encode(histores.map((e) => e.toJson()).toList());
+      var data = await Utils.encodeJsonInIsolate(
+          histores.map((e) => e.toJson()).toList());
       await request.syncHistory(client, data, overlay: overlay);
       SmartDialog.showToast("已同步历史记录");
     } catch (e) {
@@ -68,7 +71,7 @@ class SyncDeviceController extends BaseController {
       var overlay = await showOverlayDialog();
       SmartDialog.showLoading(msg: "同步中...");
       var shieldList = AppSettingsController.instance.shieldList;
-      var data = json.encode(shieldList.toList());
+      var data = await Utils.encodeJsonInIsolate(shieldList.toList());
       await request.syncBlockedWord(client, data, overlay: overlay);
       SmartDialog.showToast("已同步屏蔽词");
     } catch (e) {
@@ -83,6 +86,16 @@ class SyncDeviceController extends BaseController {
     try {
       if (!BiliBiliAccountService.instance.logined.value) {
         SmartDialog.showToast("未登录哔哩哔哩");
+        return;
+      }
+      // 账号凭据是敏感数据且链路为明文 HTTP：发送前明确告知风险
+      var confirmed = await Utils.showAlertDialog(
+        "登录凭据将通过局域网明文传输，仅建议在可信网络内使用。是否继续？",
+        title: "同步账号",
+        confirm: "继续",
+        cancel: "取消",
+      );
+      if (!confirmed) {
         return;
       }
       SmartDialog.showLoading(msg: "同步中...");

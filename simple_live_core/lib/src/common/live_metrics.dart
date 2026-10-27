@@ -93,6 +93,6 @@ class LiveMetrics {
   }
 
   String recoverySummary() =>
-      '断流恢复: ${recoveryEpisodes}轮, 起播成功$recoverySucceeded, '
+      '断流恢复: $recoveryEpisodes轮, 起播成功$recoverySucceeded, '
       '进入终态$recoveryExhausted, 累计动作$recoveryAttemptsTotal次';
 }
