@@ -65,35 +65,45 @@ class PageListView extends StatelessWidget {
           left: 0,
           right: 0,
           child: // 加载更多按钮
-              Obx(
-            () => Visibility(
+              Obx(() {
+            // Rx 必须在参与判断前无条件读取：平台判断放在最前面时，
+            // 移动端会在第一个 && 处短路，builder 一个 Rx 都没订阅，
+            // GetX 会抛 "improper use of a GetX"，该分支被 ErrorWidget 覆盖
+            final canLoadMore = pageController.canLoadMore.value;
+            final pageLoadding = pageController.pageLoadding.value;
+            final pageEmpty = pageController.pageEmpty.value;
+            return Visibility(
               visible: (Platform.isWindows ||
                       Platform.isLinux ||
                       Platform.isMacOS) &&
-                  pageController.canLoadMore.value &&
-                  !pageController.pageLoadding.value &&
-                  !pageController.pageEmpty.value,
+                  canLoadMore &&
+                  !pageLoadding &&
+                  !pageEmpty,
               child: Center(
                 child: TextButton(
                   onPressed: pageController.loadData,
                   child: const Text("加载更多"),
                 ),
               ),
-            ),
-          ),
+            );
+          }),
         ),
         Positioned(
           bottom: 12,
           right: 12,
           child: // 加载更多按钮
-              Obx(
-            () => Visibility(
+              Obx(() {
+            // 同上方：先无条件读取 Rx，再参与平台/状态判断
+            final canLoadMore = pageController.canLoadMore.value;
+            final pageLoadding = pageController.pageLoadding.value;
+            final pageEmpty = pageController.pageEmpty.value;
+            return Visibility(
               visible: (Platform.isWindows ||
                       Platform.isLinux ||
                       Platform.isMacOS) &&
-                  pageController.canLoadMore.value &&
-                  !pageController.pageLoadding.value &&
-                  !pageController.pageEmpty.value &&
+                  canLoadMore &&
+                  !pageLoadding &&
+                  !pageEmpty &&
                   showPCRefreshButton,
               child: Center(
                 child: IconButton(
@@ -107,8 +117,8 @@ class PageListView extends StatelessWidget {
                   icon: const Icon(Icons.refresh),
                 ),
               ),
-            ),
-          ),
+            );
+          }),
         ),
         Obx(
           () => Offstage(
@@ -118,12 +128,16 @@ class PageListView extends StatelessWidget {
             ),
           ),
         ),
-        Obx(
-          () => Offstage(
-            offstage: !(showPageLoadding && pageController.pageLoadding.value),
+        Obx(() {
+          // showPageLoadding 默认 false，写成 `showPageLoadding && xxx.value`
+          // 会短路，builder 一个 Rx 都没订阅 → GetX 抛错 → 该分支被
+          // ErrorWidget（release 下是 94% 不透明灰块）覆盖整个列表并吃掉点击
+          final pageLoadding = pageController.pageLoadding.value;
+          return Offstage(
+            offstage: !(showPageLoadding && pageLoadding),
             child: const AppLoaddingWidget(),
-          ),
-        ),
+          );
+        }),
         Obx(
           () => Offstage(
             offstage: !pageController.pageError.value,

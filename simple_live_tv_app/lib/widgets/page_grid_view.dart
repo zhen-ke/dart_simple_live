@@ -53,12 +53,16 @@ class PageGridView extends StatelessWidget {
             ),
           ),
         ),
-        Obx(
-          () => Offstage(
-            offstage: !(showPageLoadding && pageController.pageLoadding.value),
+        Obx(() {
+          // showPageLoadding 默认 false，写成 `showPageLoadding && xxx.value`
+          // 会短路，builder 一个 Rx 都没订阅 → GetX 抛错 → 该分支被
+          // ErrorWidget（release 下是 94% 不透明灰块）覆盖整个网格并吃掉按键/点击
+          final pageLoadding = pageController.pageLoadding.value;
+          return Offstage(
+            offstage: !(showPageLoadding && pageLoadding),
             child: const AppLoaddingWidget(),
-          ),
-        ),
+          );
+        }),
         Obx(
           () => Offstage(
             offstage: !pageController.pageError.value,
