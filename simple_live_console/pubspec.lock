@@ -101,8 +101,8 @@ packages:
     dependency: transitive
     description:
       path: "."
-      ref: HEAD
-      resolved-ref: "9d0228880aab0eb8a3802d2d6b2058cf2a0afc7e"
+      ref: a31682801e209f925cdb90fcf4e379e512b713d2
+      resolved-ref: a31682801e209f925cdb90fcf4e379e512b713d2
       url: "https://github.com/xiaoyaocz/dart_quickjs"
     source: git
     version: "1.0.0"
@@ -206,10 +206,10 @@ packages:
     dependency: "direct dev"
     description:
       name: lints
-      sha256: "0a217c6c989d21039f1498c3ed9f3ed71b354e69873f13a8dfc3c9fe76f1b452"
+      sha256: "12f842a479589fea194fe5c5a3095abc7be0c1f2ddfa9a0e76aed1dbd26a87df"
       url: "https://pub.dev"
     source: hosted
-    version: "2.1.1"
+    version: "6.1.0"
   logger:
     dependency: transitive
     description:
@@ -254,8 +254,8 @@ packages:
     dependency: transitive
     description:
       path: "packages/native_toolchain_c"
-      ref: "9d0228880aab0eb8a3802d2d6b2058cf2a0afc7e"
-      resolved-ref: "9d0228880aab0eb8a3802d2d6b2058cf2a0afc7e"
+      ref: a31682801e209f925cdb90fcf4e379e512b713d2
+      resolved-ref: a31682801e209f925cdb90fcf4e379e512b713d2
       url: "https://github.com/xiaoyaocz/dart_quickjs"
     source: git
     version: "0.17.4"
