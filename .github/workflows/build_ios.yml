@@ -1,0 +1,141 @@
+name: Build iOS
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to build'
+        required: true
+        default: 'master'
+        type: choice
+        options:
+          - dev
+          - master
+      version:
+        description: 'Version tag for release (e.g. ios_v1.0.0)'
+        required: false
+        default: ''
+        type: string
+      upload_release:
+        description: 'Upload to GitHub Release'
+        required: true
+        default: true
+        type: boolean
+
+  push:
+    tags:
+      - 'ios_v*'
+
+concurrency:
+  group: ios-release
+  cancel-in-progress: true
+
+jobs:
+  build-ios:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+
+    steps:
+      # -------------------------
+      # Checkout
+      # -------------------------
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          # dispatch 时用输入的 branch；tag 触发时用触发的 ref
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.branch || github.ref }}
+          fetch-depth: 0
+
+      # -------------------------
+      # Flutter environment
+      # -------------------------
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.38.x'
+          cache: true
+
+      - name: Flutter doctor
+        run: flutter doctor -v
+
+      # -------------------------
+      # Dependencies
+      # -------------------------
+      - name: Restore packages
+        working-directory: simple_live_app
+        run: flutter pub get
+
+      # -------------------------
+      # Version resolve
+      # -------------------------
+      - name: Resolve version
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          else
+            echo "VERSION=ios_dev_$(date +'%Y%m%d_%H%M%S')" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Echo version
+        run: echo "Version ${{ steps.version.outputs.VERSION }}"
+
+      # -------------------------
+      # Build
+      # -------------------------
+      # 未签名构建：仓库不保存证书，产物为可自行签名的 ipa
+      - name: Build iOS (no codesign)
+        working-directory: simple_live_app
+        run: flutter build ios --release --no-codesign
+
+      - name: Package unsigned IPA
+        working-directory: simple_live_app
+        run: |
+          APP_PATH="build/ios/iphoneos/Runner.app"
+          IPA_NAME="simple_live_${{ steps.version.outputs.VERSION }}.ipa"
+          if [ ! -d "$APP_PATH" ]; then
+            echo "未找到构建产物: $APP_PATH"
+            exit 1
+          fi
+          rm -rf build/ios/ipa_payload
+          mkdir -p build/ios/ipa_payload/Payload
+          cp -R "$APP_PATH" build/ios/ipa_payload/Payload/Runner.app
+          mkdir -p build/ios/ipa
+          (cd build/ios/ipa_payload && zip -q -r -y "../ipa/${IPA_NAME}" Payload)
+          echo "IPA: build/ios/ipa/${IPA_NAME}"
+          ls -lh "build/ios/ipa/${IPA_NAME}"
+
+      # -------------------------
+      # Artifacts
+      # -------------------------
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: iOS-${{ github.run_number }}
+          path: simple_live_app/build/ios/ipa/*.ipa
+
+      # -------------------------
+      # Release
+      # -------------------------
+      - name: Upload to GitHub Release
+        if: |
+          github.event_name == 'push' ||
+          github.event.inputs.upload_release == 'true'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.version.outputs.VERSION }}
+          name: "iOS ${{ steps.version.outputs.VERSION }}"
+          generate_release_notes: true
+          # 自动判断是否为预览版 (包含 dev, beta, alpha 关键词)
+          prerelease: ${{ contains(steps.version.outputs.VERSION, 'dev') || contains(steps.version.outputs.VERSION, 'beta') || contains(steps.version.outputs.VERSION, 'alpha') }}
+          files: simple_live_app/build/ios/ipa/*.ipa
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # -------------------------
+      # Done
+      # -------------------------
+      - name: Build completed
+        run: echo "🍎 iOS build finished with status ${{ job.status }}"
