@@ -15,6 +15,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:simple_live_app/app/app_style.dart';
 import 'package:simple_live_app/app/controller/app_settings_controller.dart';
+import 'package:simple_live_shared/app/image_cache_policy.dart';
 import 'package:simple_live_shared/app/log.dart';
 import 'package:simple_live_app/app/utils.dart';
 import 'package:simple_live_app/app/utils/listen_fourth_button.dart';
@@ -72,6 +73,8 @@ Future<void> _bootstrap() async {
   // 限制图片缓存数量与内存占用（最多缓存200张或50MB），缓解因大量主播头像等引发的高内存问题
   PaintingBinding.instance.imageCache.maximumSize = 200;
   PaintingBinding.instance.imageCache.maximumSizeBytes = 50 * 1024 * 1024;
+  // 系统内存压力是明确的回收信号：此时保住缓存不如避免被系统杀掉
+  WidgetsBinding.instance.addObserver(_ImageCachePressureObserver());
 
   MediaKit.ensureInitialized();
 
@@ -278,6 +281,16 @@ void initCoreLog() {
         Log.logPrint(msg);
     }
   };
+}
+
+/// 系统内存压力下的图片缓存回收器。
+/// 常驻注册：`didHaveMemoryPressure` 只在真正吃紧时触发，
+/// 比定时清理更精准，也不会影响正常浏览的命中率。
+class _ImageCachePressureObserver with WidgetsBindingObserver {
+  @override
+  void didHaveMemoryPressure() {
+    ImageCachePolicy.trimOnMemoryPressure();
+  }
 }
 
 /// 初始化失败时的最小可用界面：至少让用户看到原因，

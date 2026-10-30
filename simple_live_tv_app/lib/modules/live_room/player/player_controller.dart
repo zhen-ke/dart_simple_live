@@ -31,21 +31,29 @@ mixin PlayerMixin {
   /// 并发调用共享同一任务；失败时清空，允许后续重试
   Future<void>? _playerInitTask;
 
-  /// 播放器实例
-  late final player = Player(
-    configuration: PlayerConfiguration(
-      title: "Simple Live Player",
-      // 设置 demuxer-max-bytes（媒体缓冲上限）。
-      // media_kit 通过 PlayerConfiguration.bufferSize 在内核启动时一次性注入，
-      // 比 setProperty 更可靠（参见 media_kit #549）。
-      bufferSize:
-          AppSettingsController.instance.playerBufferSize.value * 1024 * 1024,
-      // mpv 日志门槛：release 只保留 error。
-      // TV 端没有日志查看页也没有文件写入，info 级日志对用户无价值，
-      // 只会在电视盒子上持续产生字符串分配和平台通道开销。
-      logLevel: kDebugMode ? MPVLogLevel.info : MPVLogLevel.error,
-    ),
-  );
+  Player? _playerInstance;
+
+  /// 播放器是否已创建：退出时据此决定要不要走原生释放。
+  /// `late final player` 会在 onClose 里被动构造出一个只用来销毁的
+  /// mpv 实例，未开播的房间因此白占 20–40MB，所以这里改成显式惰性。
+  bool get isPlayerCreated => _playerInstance != null;
+
+  /// 播放器实例（首次访问时才创建 mpv）
+  Player get player => _playerInstance ??= Player(
+        configuration: PlayerConfiguration(
+          title: "Simple Live Player",
+          // 设置 demuxer-max-bytes（媒体缓冲上限）。
+          // media_kit 通过 PlayerConfiguration.bufferSize 在内核启动时一次性注入，
+          // 比 setProperty 更可靠（参见 media_kit #549）。
+          bufferSize: AppSettingsController.instance.playerBufferSize.value *
+              1024 *
+              1024,
+          // mpv 日志门槛：release 只保留 error。
+          // TV 端没有日志查看页也没有文件写入，info 级日志对用户无价值，
+          // 只会在电视盒子上持续产生字符串分配和平台通道开销。
+          logLevel: kDebugMode ? MPVLogLevel.info : MPVLogLevel.error,
+        ),
+      );
 
   /// 初始化播放器参数（仅执行一次）
   Future<void> initializePlayer() {
@@ -67,6 +75,13 @@ mixin PlayerMixin {
     // media_kit 仓库更新导致的问题，临时解决办法
     if (Platform.isAndroid) {
       await pp.setProperty('force-seekable', 'yes');
+    }
+
+    // 软解时限制解码线程数：每个线程一套帧缓冲，默认按核数开线程
+    // 在高核数设备上会白白多占几十 MB；直播 1080p 4 线程足够
+    if (!AppSettingsController.instance.hardwareDecode.value) {
+      final cores = Platform.numberOfProcessors;
+      await pp.setProperty('vd-lavc-threads', '${cores < 4 ? cores : 4}');
     }
 
     // 直播 FLV 断流恢复会重新取流，回退缓存没有实际收益；避免额外驻留。
@@ -108,20 +123,27 @@ mixin PlayerMixin {
     }
   }
 
-  /// 视频控制器
-  late final videoController = VideoController(
-    player,
-    configuration: AppSettingsController.instance.playerCompatMode.value
-        ? const VideoControllerConfiguration(
-            vo: 'mediacodec_embed',
-            hwdec: 'mediacodec',
-          )
-        : VideoControllerConfiguration(
-            enableHardwareAcceleration:
-                AppSettingsController.instance.hardwareDecode.value,
-            androidAttachSurfaceAfterVideoParameters: false,
-          ),
-  );
+  VideoController? _videoControllerInstance;
+
+  /// 视频控制器（首次访问时才创建纹理与渲染上下文）
+  VideoController get videoController => _videoControllerInstance ??=
+      VideoController(player, configuration: _videoControllerConfiguration());
+
+  VideoControllerConfiguration _videoControllerConfiguration() {
+    final settings = AppSettingsController.instance;
+    // 兼容模式只在 Android 有意义（mediacodec_embed 是 Android 专用 VO）
+    if (settings.playerCompatMode.value && Platform.isAndroid) {
+      return const VideoControllerConfiguration(
+        vo: 'mediacodec_embed',
+        hwdec: 'mediacodec',
+      );
+    }
+    return VideoControllerConfiguration(
+      hwdec: settings.hardwareDecode.value ? 'auto' : 'no',
+      enableHardwareAcceleration: settings.hardwareDecode.value,
+      androidAttachSurfaceAfterVideoParameters: false,
+    );
+  }
 }
 mixin PlayerStateMixin on PlayerMixin {
   /// 是否显示弹幕
@@ -202,7 +224,11 @@ mixin PlayerStateMixin on PlayerMixin {
   void updateScaleMode() {
     var boxFit = BoxFit.contain;
     double? aspectRatio;
-    if (player.state.width != null && player.state.height != null) {
+    // 播放器尚未创建时不要去读 player.state：惰性 getter 会为此
+    // 拉起一个只为了读宽高的 mpv
+    if (isPlayerCreated &&
+        player.state.width != null &&
+        player.state.height != null) {
       aspectRatio = player.state.width! / player.state.height!;
     }
 
@@ -251,6 +277,14 @@ mixin PlayerDanmakuMixin on PlayerStateMixin {
     danmakuController?.clear();
   }
 
+  /// 弹幕层从树上移除时调用（关闭弹幕 / 退出直播间）。
+  /// 清掉缓存的 widget，下次开启按最新设置重建，同时断开对
+  /// 已卸载 State 的控制器引用。
+  void onDanmakuViewDetached() {
+    danmakuController = null;
+    danmakuView = null;
+  }
+
   void addDanmaku(List<DanmakuContentItem> items) {
     if (!showDanmakuState.value) {
       return;
@@ -295,8 +329,24 @@ class PlayerController extends BaseController
   @override
   void onInit() {
     initSystem();
-    initStream();
+    // 播放器与流订阅延迟到真正取流时创建（见 initializePlayer）：
+    // 未开播、取流失败的房间不再空跑一个 mpv 实例
     super.onInit();
+  }
+
+  bool _streamInitialized = false;
+
+  /// 首次取流时才创建播放器并挂上事件订阅
+  @override
+  Future<void> initializePlayer() {
+    _initStreamOnce();
+    return super.initializePlayer();
+  }
+
+  void _initStreamOnce() {
+    if (_streamInitialized) return;
+    _streamInitialized = true;
+    initStream();
   }
 
   var width = 0.obs;
@@ -352,10 +402,16 @@ class PlayerController extends BaseController
 
   void disposeStream() {
     _errorSubscription?.cancel();
+    _errorSubscription = null;
     _completedSubscription?.cancel();
+    _completedSubscription = null;
     _videoParamsSubscription?.cancel();
+    _videoParamsSubscription = null;
     _logSubscription?.cancel();
+    _logSubscription = null;
     _playingSubscription?.cancel();
+    _playingSubscription = null;
+    _streamInitialized = false;
   }
 
   /// 播放器进入播放态的钩子：由子类覆盖，
@@ -370,14 +426,32 @@ class PlayerController extends BaseController
   void onClose() async {
     Log.w("播放器关闭");
     disposeStream();
-    // 先停流再做平台侧清理：resetSystem 的平台调用耗时较长，
-    // 不先停流会在页面销毁后继续出声
-    await player.stop();
+    // 弹幕清空是同步的，放在第一个 await 之前
     disposeDanmakuController();
     hideControlsTimer?.cancel();
     hideSeekTipTimer?.cancel();
-    await resetSystem();
-    await player.dispose();
+
+    // 释放顺序与容错：先停流 → 再销毁原生播放器 → 最后平台侧清理。
+    // 每一步独立 try/catch，平台调用抛异常不能把 mpv 释放整块跳过。
+    if (isPlayerCreated) {
+      try {
+        await player.stop();
+      } catch (e, s) {
+        Log.e("player.stop 失败", s);
+      }
+    }
+    if (isPlayerCreated) {
+      try {
+        await player.dispose();
+      } catch (e, s) {
+        Log.e("player.dispose 失败", s);
+      }
+    }
+    try {
+      await resetSystem();
+    } catch (e, s) {
+      Log.e("resetSystem 失败", s);
+    }
     super.onClose();
   }
 }

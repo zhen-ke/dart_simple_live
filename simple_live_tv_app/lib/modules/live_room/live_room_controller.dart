@@ -9,6 +9,7 @@ import 'package:simple_live_core/simple_live_core.dart';
 import 'package:simple_live_shared/app/constant.dart';
 import 'package:simple_live_tv_app/app/controller/app_settings_controller.dart';
 import 'package:simple_live_shared/app/event_bus.dart';
+import 'package:simple_live_shared/app/image_cache_policy.dart';
 import 'package:simple_live_shared/app/log.dart';
 import 'package:simple_live_tv_app/app/sites.dart';
 import 'package:simple_live_tv_app/app/utils.dart';
@@ -39,6 +40,10 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
   Rx<LiveRoomDetail?> detail = Rx<LiveRoomDetail?>(null);
   var online = 0.obs;
   var followed = false.obs;
+
+  /// 是否已发起过播放：页面据此决定挂不挂 Video。
+  /// 未开播/取流失败的房间不创建 VideoController，也就不创建 mpv。
+  var playerEnabled = false.obs;
   /// 开播状态三态：查询失败是 unknown，不能与 offline 混为一谈
   var liveStatus = LiveStatus.unknown.obs;
 
@@ -473,6 +478,9 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     currentLineInfo.value = "线路${currentLineIndex + 1}";
     errorMsg.value = "";
     try {
+      // 确认有可播线路后才挂载 Video：在此之前页面不创建
+      // VideoController，也就不会拉起 mpv（未开播房间零成本）
+      playerEnabled.value = true;
       // 初始化播放器并设置 ao 参数
       await initializePlayer();
       // 初始化期间取流请求可能已被更新的一次取代
@@ -843,8 +851,10 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     // 重新设置LiveDanmaku
     liveDanmaku = site.liveSite.getDanmaku();
 
-    // 停止播放
-    await player.stop();
+    // 停止播放：从未创建过播放器就不必为了 stop 去构造一个 mpv 实例
+    if (isPlayerCreated) {
+      await player.stop();
+    }
 
     // 刷新信息
     loadData();
@@ -960,12 +970,14 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     _shieldPatternWorker?.dispose();
     _shieldPatternWorker = null;
 
-    danmakuController = null;
-    // 不清空全局图片内存缓存：LRU 上限已控住总量，而房间的头像/SC 图片
-    // URL 与首页、关注、历史列表共用同一份缓存键，全局清空会让返回
-    // 列表时所有封面头像重新走网络与解码
+    // 图片缓存按预算回收：低于阈值保留（列表页仍能命中），
+    // 超过阈值说明房间里的头像/SC 图已占大头，整体释放
+    ImageCachePolicy.trimOnRoomExit();
     // 页面级焦点节点随控制器一起释放，否则每次进出直播间都会漏一个
     focusNode.dispose();
+    // super.onClose 会同步清空弹幕控制器（在第一个 await 之前），
+    // 这里再断开引用，避免控制器把已卸载的 DanmakuScreen 挂在内存里
     super.onClose();
+    danmakuController = null;
   }
 }

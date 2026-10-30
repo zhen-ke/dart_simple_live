@@ -13,6 +13,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:simple_live_core/simple_live_core.dart';
 import 'package:simple_live_tv_app/app/app_style.dart';
 import 'package:simple_live_tv_app/app/controller/app_settings_controller.dart';
+import 'package:simple_live_shared/app/image_cache_policy.dart';
 import 'package:simple_live_shared/app/log.dart';
 import 'package:simple_live_tv_app/app/utils.dart';
 import 'package:simple_live_shared/models/db/follow_user.dart';
@@ -56,6 +57,8 @@ Future<void> _bootstrap() async {
   // TV 端封面/头像更密集且可用内存更小，不设上限时容易把内存顶高
   PaintingBinding.instance.imageCache.maximumSize = 200;
   PaintingBinding.instance.imageCache.maximumSizeBytes = 50 * 1024 * 1024;
+  // 系统内存压力是明确的回收信号：此时保住缓存不如避免被系统杀掉
+  WidgetsBinding.instance.addObserver(_ImageCachePressureObserver());
 
   MediaKit.ensureInitialized();
   // 包信息与 Hive 初始化互不依赖，并行执行，缩短冷启动串行链
@@ -76,6 +79,16 @@ Future<void> _bootstrap() async {
   ]);
   // 全屏
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: []);
+}
+
+/// 系统内存压力下的图片缓存回收器。
+/// 常驻注册：`didHaveMemoryPressure` 只在真正吃紧时触发，
+/// 比定时清理更精准，也不会影响正常浏览的命中率。
+class _ImageCachePressureObserver with WidgetsBindingObserver {
+  @override
+  void didHaveMemoryPressure() {
+    ImageCachePolicy.trimOnMemoryPressure();
+  }
 }
 
 /// 初始化失败时的最小可用界面。

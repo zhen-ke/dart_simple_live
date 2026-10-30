@@ -13,6 +13,7 @@ import 'package:simple_live_app/app/app_style.dart';
 import 'package:simple_live_shared/app/constant.dart';
 import 'package:simple_live_app/app/controller/app_settings_controller.dart';
 import 'package:simple_live_shared/app/event_bus.dart';
+import 'package:simple_live_shared/app/image_cache_policy.dart';
 import 'package:simple_live_shared/app/log.dart';
 import 'package:simple_live_app/app/sites.dart';
 import 'package:simple_live_app/app/utils.dart';
@@ -59,6 +60,10 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
   Rx<LiveRoomDetail?> detail = Rx<LiveRoomDetail?>(null);
   var online = 0.obs;
   var followed = false.obs;
+
+  /// 是否已发起过播放：页面据此决定挂不挂 Video。
+  /// 未开播/取流失败的房间不创建 VideoController，也就不创建 mpv。
+  var playerEnabled = false.obs;
   /// 开播状态三态：查询失败是 unknown，不能与 offline 混为一谈
   var liveStatus = LiveStatus.unknown.obs;
   RxList<LiveSuperChatMessage> superChats = RxList<LiveSuperChatMessage>();
@@ -767,6 +772,9 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     errorMsg.value = "";
 
     try {
+      // 确认有可播线路后才挂载 Video：在此之前页面不创建
+      // VideoController，也就不会拉起 mpv（未开播房间零成本）
+      playerEnabled.value = true;
       // 初始化播放器并设置 ao 参数
       await initializePlayer();
       // 初始化期间取流请求可能已被更新的一次取代
@@ -799,6 +807,8 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     currentLineInfo.value = "线路${currentLineIndex + 1}";
     errorMsg.value = "";
 
+    // 幂等：正常路径已初始化，这里只兜底异常时序
+    await initializePlayer();
     // 按当前线路的实际流类型校正 cache-secs（FLV/HLS 预读不同）
     await applyDemuxerCacheSecsFor(playUrls[currentLineIndex]);
     _openIssuedAt = DateTime.now();
@@ -816,6 +826,8 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     currentLineInfo.value = "线路${currentLineIndex + 1}";
     errorMsg.value = "";
 
+    // 幂等：换线时播放器通常已初始化，这里兜底首次直接换线的时序
+    await initializePlayer();
     // 按当前线路的实际流类型校正 cache-secs（FLV/HLS 预读不同）
     await applyDemuxerCacheSecsFor(playUrls[currentLineIndex]);
     _openIssuedAt = DateTime.now();
@@ -1249,7 +1261,10 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
                 max: 100,
                 value: AppSettingsController.instance.playerVolume.value,
                 onChanged: (newValue) {
-                  player.setVolume(newValue);
+                  // 播放器未创建时只落设置，不为了调音量拉起 mpv
+                  if (isPlayerCreated) {
+                    player.setVolume(newValue);
+                  }
                   AppSettingsController.instance.setPlayerVolume(newValue);
                 },
               ),
@@ -1605,8 +1620,10 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     // 重新设置LiveDanmaku
     liveDanmaku = site.liveSite.getDanmaku();
 
-    // 停止播放
-    await player.stop();
+    // 停止播放：从未创建过播放器就不必为了 stop 去构造一个 mpv 实例
+    if (isPlayerCreated) {
+      await player.stop();
+    }
 
     // 刷新信息
     loadData();
@@ -1719,13 +1736,15 @@ ${errorStackTrace ?? (error is Error ? (error as Error).stackTrace : "")}''');
     _clearPendingMessages();
     _shieldPatternWorker?.dispose();
     _shieldPatternWorker = null;
-    danmakuController = null;
     _liveDurationTimer?.cancel(); // 页面关闭时取消定时器
     _scPruneTimer?.cancel();
     _stablePlayTimer?.cancel();
-    // 不清空全局图片内存缓存：main.dart 的 LRU 上限（200张/50MB）已控住
-    // 总量，而房间的头像/SC 图片 URL 与首页、关注、历史列表共用同一份
-    // 缓存键，全局清空会让返回列表时所有封面头像重新走网络与解码
+    // 图片缓存按预算回收：低于阈值保留（列表页仍能命中），
+    // 超过阈值说明房间里的头像/SC 图已占大头，整体释放
+    ImageCachePolicy.trimOnRoomExit();
+    // super.onClose 会同步清空弹幕控制器（在第一个 await 之前），
+    // 这里再断开引用，避免控制器把已卸载的 DanmakuScreen 挂在内存里
     super.onClose();
+    danmakuController = null;
   }
 }

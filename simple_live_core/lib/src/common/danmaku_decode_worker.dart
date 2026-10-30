@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
@@ -12,6 +13,37 @@ import 'package:tars_dart/tars/codec/tars_input_stream.dart' hide BinaryReader;
 
 import 'binary_writer.dart';
 import 'core_log.dart';
+import 'live_metrics.dart';
+
+/// 一帧待解码数据的生命周期载体。
+///
+/// 排队、在途、完成三个阶段共用同一份状态：`payload` 在真正投递给
+/// 子 isolate 后立即置空，避免主 isolate 在队列里长期持有一份原始帧。
+class _PendingFrame {
+  _PendingFrame(this.id, this.platform, this.payload)
+      : size = payload.lengthInBytes;
+
+  static final Uint8List _empty = Uint8List(0);
+
+  final int id;
+  final String platform;
+  final int size;
+  Uint8List payload;
+
+  final Completer<Map<String, dynamic>> completer =
+      Completer<Map<String, dynamic>>();
+
+  /// 字节已转移给子 isolate，主 isolate 不再持有
+  void releasePayload() => payload = _empty;
+
+  void completeWith(Map<String, dynamic> value) {
+    if (!completer.isCompleted) completer.complete(value);
+  }
+
+  void completeError(Object error) {
+    if (!completer.isCompleted) completer.completeError(error);
+  }
+}
 
 /// Long-lived decoder isolate for the hot Bilibili/Douyin/Huya/Douyu frame
 /// paths. Keeping one worker per room avoids paying Isolate.run's spawn cost
@@ -21,7 +53,22 @@ import 'core_log.dart';
 /// - 监听退出/错误端口，退出时失败全部在途请求并复位状态；
 /// - 崩溃后按指数退避重新拉起，退避窗口内改在调用方 isolate 内联解码，
 ///   保证弹幕永远不会因为解码器崩溃而停摆（只是短暂占用 UI 线程）。
+///
+/// 内存边界（这是本类存在的第二个理由）：
+/// 调用方是 `unawaited` 逐帧投递的，WebSocket 不会等解码完成再收下一帧。
+/// 如果这里不设上限，解码慢于到达时待处理帧会无限堆积——每帧还会在
+/// 主 isolate 与子 isolate 各留一份。所以这里是一条**有界流水线**：
+/// - 排队区最多 [maxQueuedFrames] 帧 / [maxQueuedBytes] 字节，满了丢最旧的；
+/// - 子 isolate 同时最多 [maxInFlightFrames] 帧，天然限制延迟；
+/// - 帧字节用 [TransferableTypedData] 转移，投递后主 isolate 立刻释放。
 class DanmakuDecodeWorker {
+  /// 排队上限：解码跟不上时保新弃旧，内存与延迟都被这两个上限锁死
+  static const int maxQueuedFrames = 32;
+  static const int maxQueuedBytes = 4 * 1024 * 1024;
+
+  /// 子 isolate 在途窗口：越小积压越少，帧顺序仍由排队区保证
+  static const int maxInFlightFrames = 4;
+
   ReceivePort? _receivePort;
   ReceivePort? _exitPort;
   ReceivePort? _errorPort;
@@ -44,10 +91,28 @@ class DanmakuDecodeWorker {
   /// 退出日志节流：Isolate 反复退出时不至于刷爆日志
   DateTime? _lastExitLogAt;
 
-  final Map<int, Completer<Map<String, dynamic>>> _pending = {};
+  /// 等待投递的帧（保序）
+  final Queue<_PendingFrame> _queue = Queue<_PendingFrame>();
+
+  /// 已投递给子 isolate、尚未回包的帧
+  final Map<int, _PendingFrame> _inFlight = <int, _PendingFrame>{};
+
+  int _queuedBytes = 0;
+
+  /// 投递循环是否在跑：保证同一时刻只有一个 pump
+  bool _pumping = false;
 
   /// 解码 Isolate 当前是否在跑（仅测试用）
   bool get debugIsWorkerRunning => _sendPort != null;
+
+  /// 当前排队帧数（仅测试用）
+  int get debugQueuedFrames => _queue.length;
+
+  /// 当前在途帧数（仅测试用）
+  int get debugInFlightFrames => _inFlight.length;
+
+  /// 当前排队字节数（仅测试用）
+  int get debugQueuedBytes => _queuedBytes;
 
   Future<Map<String, dynamic>> decodeBilibili(List<int> data) =>
       _decode('bilibili', data);
@@ -61,21 +126,111 @@ class DanmakuDecodeWorker {
   Future<Map<String, dynamic>> decodeDouyu(List<int> data) =>
       _decode('douyu', data);
 
-  Future<Map<String, dynamic>> _decode(String platform, List<int> data) async {
+  Future<Map<String, dynamic>> _decode(String platform, List<int> data) {
     if (_disposed) throw StateError('Danmaku decoder is disposed');
-    final sendPort = await _acquireSendPort();
-    if (_disposed) throw StateError('Danmaku decoder is disposed');
-    if (sendPort == null) {
-      // 解码 Isolate 不可用：退化为当前 isolate 内联解码。
-      // 弹幕是实时数据，宁可短暂占用 UI 线程也不能整条链路停摆。
-      return _decodeInline(platform, data);
+    final payload = data is Uint8List ? data : Uint8List.fromList(data);
+    final frame = _PendingFrame(++_nextRequestId, platform, payload);
+    if (!_enqueue(frame)) {
+      // 队列已满且这一帧本身就超预算：直接丢弃，调用方拿到空结果
+      return Future<Map<String, dynamic>>.value(_droppedResult());
     }
+    return frame.completer.future;
+  }
 
-    final requestId = ++_nextRequestId;
-    final completer = Completer<Map<String, dynamic>>();
-    _pending[requestId] = completer;
-    sendPort.send(<Object?>[requestId, platform, data]);
-    return completer.future;
+  /// 入队并触发投递。队列满时丢最旧的帧——弹幕是实时数据，
+  /// 保新弃旧比保旧弃新更符合观看语义，也能把延迟压住。
+  bool _enqueue(_PendingFrame frame) {
+    // 单帧就超过整个队列预算：直接丢弃，避免一帧把队列顶爆
+    if (frame.size > maxQueuedBytes) {
+      LiveMetrics.instance.recordDecoderDrop(1);
+      return false;
+    }
+    while (_queue.isNotEmpty &&
+        (_queue.length >= maxQueuedFrames ||
+            _queuedBytes + frame.size > maxQueuedBytes)) {
+      final dropped = _queue.removeFirst();
+      _queuedBytes -= dropped.size;
+      dropped.completeWith(_droppedResult());
+      LiveMetrics.instance.recordDecoderDrop(1);
+    }
+    _queue.add(frame);
+    _queuedBytes += frame.size;
+    _schedulePump();
+    return true;
+  }
+
+  static Map<String, dynamic> _droppedResult() => <String, dynamic>{
+        'messages': const <Object?>[],
+        'messageCount': 0,
+        'elapsedUs': 0,
+        'dropped': true,
+      };
+
+  void _schedulePump() {
+    if (_pumping || _disposed) return;
+    _pumping = true;
+    unawaited(_pump());
+  }
+
+  /// 唯一的投递循环：从排队区取帧 → 投给子 isolate（或内联兜底）。
+  /// 只有这里会推进队列，因此帧顺序天然保持，在途窗口也不会超限。
+  Future<void> _pump() async {
+    try {
+      while (!_disposed &&
+          _inFlight.length < maxInFlightFrames &&
+          _queue.isNotEmpty) {
+        final frame = _queue.first;
+        SendPort? sendPort;
+        try {
+          sendPort = await _acquireSendPort();
+        } catch (_) {
+          sendPort = null;
+        }
+        // 等待端口期间可能已被复位/销毁：帧已不在队列就跳过
+        if (!_queue.remove(frame)) continue;
+        _queuedBytes -= frame.size;
+
+        if (_disposed) {
+          frame.completeError(StateError('Danmaku decoder is disposed'));
+          continue;
+        }
+
+        if (sendPort == null) {
+          // 解码 Isolate 不可用：退化为当前 isolate 内联解码。
+          // 弹幕是实时数据，宁可短暂占用 UI 线程也不能整条链路停摆。
+          frame.completeWith(_decodeInline(frame.platform, frame.payload));
+          frame.releasePayload();
+          // 让出事件循环，避免退避窗口内一次性把整队内联解码完卡住 UI
+          await Future<void>.delayed(Duration.zero);
+          continue;
+        }
+
+        _inFlight[frame.id] = frame;
+        try {
+          sendPort.send(<Object?>[
+            frame.id,
+            frame.platform,
+            TransferableTypedData.fromList(<TypedData>[frame.payload]),
+          ]);
+        } catch (e) {
+          // 端口在获取后失效（Isolate 刚被杀）：失败这一帧并退出窗口，
+          // 不能让异常从 unawaited 的 pump 里逃逸
+          _inFlight.remove(frame.id);
+          frame.completeError(StateError('Danmaku decoder send failed: $e'));
+          continue;
+        }
+        // 字节所有权已转移，主 isolate 不再持有这一帧
+        frame.releasePayload();
+      }
+    } finally {
+      _pumping = false;
+      // 退出循环可能是因为在途窗口满了：回包释放名额后要继续投递
+      if (!_disposed &&
+          _inFlight.length < maxInFlightFrames &&
+          _queue.isNotEmpty) {
+        _schedulePump();
+      }
+    }
   }
 
   /// 取可用的解码端口；退避窗口内或拉起失败时返回 null（调用方走内联）
@@ -144,19 +299,25 @@ class DanmakuDecodeWorker {
       }
       if (message is! List || message.length < 2) return;
       final requestId = message[0] as int;
-      final completer = _pending.remove(requestId);
-      if (completer == null || completer.isCompleted) return;
+      final frame = _inFlight.remove(requestId);
+      if (frame == null || frame.completer.isCompleted) {
+        // 复位后到达的迟到回包：只腾出窗口，不写结果
+        _schedulePump();
+        return;
+      }
       // 收到回包说明 Isolate 活着：清空失败计数与退避窗口
       _failureStreak = 0;
       _nextStartAt = null;
       final result = message[1];
       if (result is Map) {
-        completer.complete(Map<String, dynamic>.from(result));
+        frame.completeWith(Map<String, dynamic>.from(result));
       } else {
-        completer.completeError(
+        frame.completeError(
           StateError('Unexpected danmaku decoder response: $result'),
         );
       }
+      // 在途名额释放，继续投递排队帧
+      _schedulePump();
     });
 
     // Isolate 正常退出/被杀/未捕获异常终止都会走到这里
@@ -226,7 +387,7 @@ class DanmakuDecodeWorker {
     _nextStartAt = DateTime.now().add(Duration(milliseconds: backoffMs));
   }
 
-  /// 复位解码器状态。调用后 _sendPort/_isolate 为空，pending 全部失败，
+  /// 复位解码器状态。调用后 _sendPort/_isolate 为空，在途与排队帧全部失败，
   /// 下一次 [_ensureStarted] 会重新拉起 Isolate。
   void _resetWorker(Object error) {
     // 递增代次，使旧 Isolate 的迟到消息/退出回调全部失效
@@ -251,12 +412,15 @@ class DanmakuDecodeWorker {
     _errorPort?.close();
     _errorPort = null;
 
-    for (final completer in _pending.values) {
-      if (!completer.isCompleted) {
-        completer.completeError(error);
-      }
+    for (final frame in _inFlight.values) {
+      frame.completeError(error);
     }
-    _pending.clear();
+    _inFlight.clear();
+    for (final frame in _queue) {
+      frame.completeError(error);
+    }
+    _queue.clear();
+    _queuedBytes = 0;
   }
 
   void _logExit(String message) {
@@ -289,11 +453,15 @@ void _danmakuDecoderMain(SendPort mainSendPort) {
     if (message is! List || message.length < 3) return;
     final requestId = message[0] as int;
     final platform = message[1] as String;
-    // 保持 Uint8List 原类型：跨 isolate 传递后仍是 Uint8List，
-    // 解码侧可以直接复用，不必再 fromList 拷一遍
+    // 帧字节由调用方以 TransferableTypedData 转移过来：materialize 拿到
+    // 的是外部缓冲的所有权，不会再复制一遍；内联兜底路径仍可能是普通 List
     final payload = message[2];
-    final data =
-        payload is Uint8List ? payload : (payload as List).cast<int>();
+    final data = switch (payload) {
+      TransferableTypedData() => payload.materialize().asUint8List(),
+      Uint8List() => payload,
+      List() => payload.cast<int>(),
+      _ => const <int>[],
+    };
     try {
       final result = switch (platform) {
         'bilibili' => decodeBilibiliFrame(data),

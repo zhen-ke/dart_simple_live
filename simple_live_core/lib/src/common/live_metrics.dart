@@ -20,6 +20,13 @@ class LiveMetrics {
   /// 因显示预算被丢弃、未进入绘制队列的弹幕条数
   int danmakuDropped = 0;
 
+  /// 因解码队列积压被丢弃的原始帧数（保新弃旧的代价）
+  int decoderDroppedFrames = 0;
+
+  /// 记录一帧被解码队列丢弃：这是有界流水线的正常降级，
+  /// 不是错误，但要能被观测到
+  void recordDecoderDrop(int frames) => decoderDroppedFrames += frames;
+
   /// 记录一帧弹幕解码的耗时（一帧可能解码出多条消息）
   void recordDanmakuDecode(
     Duration elapsed, {
@@ -57,6 +64,7 @@ class LiveMetrics {
     _decodeMaxUs = 0;
     _nextDecodeLogAt = 2000;
     danmakuDropped = 0;
+    decoderDroppedFrames = 0;
     recoveryEpisodes = 0;
     recoverySucceeded = 0;
     recoveryExhausted = 0;
@@ -69,7 +77,8 @@ class LiveMetrics {
     }
     return '弹幕解码: $_decodedMessages条/$_decodeFrames帧, '
         'avg=${averageDecodeUs}us/帧 (wall ${averageDecodeWallUs}us), '
-        'max=${_decodeMaxUs}us/帧, 预算丢弃=$danmakuDropped条';
+        'max=${_decodeMaxUs}us/帧, 预算丢弃=$danmakuDropped条, '
+        '解码丢弃=$decoderDroppedFrames帧';
   }
 
   // ---- 断流恢复 ----

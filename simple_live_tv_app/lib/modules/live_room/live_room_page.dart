@@ -135,19 +135,24 @@ class LiveRoomPage extends GetView<LiveRoomController> {
     }
     return Stack(
       children: [
-        Video(
-          key: controller.globalPlayerKey,
-          controller: controller.videoController,
-          pauseUponEnteringBackgroundMode:
-              AppSettingsController.instance.playerAutoPause.value,
-          resumeUponEnteringForegroundMode:
-              AppSettingsController.instance.playerAutoPause.value,
-          controls: (state) {
-            return playerControls(state, controller);
-          },
-          aspectRatio: aspectRatio,
-          fit: boxFit,
-        ),
+        // 确认有可播线路后才挂载 Video：VideoController 会创建纹理与
+        // 渲染上下文，未开播/取流失败的房间不必为此拉起一个 mpv
+        if (controller.playerEnabled.value)
+          Video(
+            key: controller.globalPlayerKey,
+            controller: controller.videoController,
+            pauseUponEnteringBackgroundMode:
+                AppSettingsController.instance.playerAutoPause.value,
+            resumeUponEnteringForegroundMode:
+                AppSettingsController.instance.playerAutoPause.value,
+            controls: (state) {
+              return playerControls(state, controller);
+            },
+            aspectRatio: aspectRatio,
+            fit: boxFit,
+          )
+        else
+          const SizedBox.expand(child: ColoredBox(color: Colors.black)),
         Obx(
           () => Visibility(
             // 仅在确认下播时显示：unknown（查询失败）不谎报未开播

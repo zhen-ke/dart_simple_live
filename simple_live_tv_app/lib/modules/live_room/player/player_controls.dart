@@ -211,40 +211,65 @@ Widget buildControls(VideoState videoState, LiveRoomController controller) {
 
 Widget buildDanmuView(VideoState videoState, LiveRoomController controller) {
   var padding = MediaQuery.of(videoState.context).padding;
-  controller.danmakuView ??= DanmakuScreen(
-    key: controller.globalDanmuKey,
-    createdController: controller.initDanmakuController,
-    option: DanmakuOption(
-      fontSize: AppSettingsController.instance.danmuSize.value.w,
-      area: AppSettingsController.instance.danmuArea.value,
-      duration: AppSettingsController.instance.danmuSpeed.value.toInt(),
-      opacity: AppSettingsController.instance.danmuOpacity.value,
-    ),
-  );
   return Positioned.fill(
     top: padding.top,
     bottom: padding.bottom,
-    child: Obx(
-      () => Offstage(
-        offstage: !controller.showDanmakuState.value,
-        // Offstage 只是不绘制，弹幕画布的 ticker 还在跑，
-        // 关弹幕时一并停掉动画
-        child: TickerMode(
-          enabled: controller.showDanmakuState.value,
-          child: Padding(
-            padding: controller.fullScreenState.value
-                ? EdgeInsets.only(
-                    top: AppSettingsController.instance.danmuTopMargin.value,
-                    bottom:
-                        AppSettingsController.instance.danmuBottomMargin.value,
-                  )
-                : EdgeInsets.zero,
-            child: controller.danmakuView!,
-          ),
+    child: Obx(() {
+      // 关弹幕时把 DanmakuScreen 移出树，而不是 Offstage：
+      // 它的 State 持有屏上所有 ui.Paragraph 和 100ms 的 tick 循环，
+      // 隐藏而不释放等于一直替用户养着一份弹幕内存
+      if (!controller.showDanmakuState.value) {
+        return const SizedBox.shrink();
+      }
+      controller.danmakuView ??= DanmakuScreen(
+        key: controller.globalDanmuKey,
+        createdController: controller.initDanmakuController,
+        option: DanmakuOption(
+          fontSize: AppSettingsController.instance.danmuSize.value.w,
+          area: AppSettingsController.instance.danmuArea.value,
+          duration: AppSettingsController.instance.danmuSpeed.value.toInt(),
+          opacity: AppSettingsController.instance.danmuOpacity.value,
         ),
-      ),
-    ),
+      );
+      return _DanmakuLayer(
+        controller: controller,
+        child: Padding(
+          padding: controller.fullScreenState.value
+              ? EdgeInsets.only(
+                  top: AppSettingsController.instance.danmuTopMargin.value,
+                  bottom:
+                      AppSettingsController.instance.danmuBottomMargin.value,
+                )
+              : EdgeInsets.zero,
+          child: controller.danmakuView!,
+        ),
+      );
+    }),
   );
+}
+
+/// 弹幕层宿主：只在弹幕开启时存在于树上。
+/// 关闭弹幕时随子树一起卸载，由 [State.dispose] 通知控制器
+/// 丢弃缓存的 DanmakuScreen 与控制器引用，下次开启按最新设置重建。
+class _DanmakuLayer extends StatefulWidget {
+  final LiveRoomController controller;
+  final Widget child;
+
+  const _DanmakuLayer({required this.controller, required this.child});
+
+  @override
+  State<_DanmakuLayer> createState() => _DanmakuLayerState();
+}
+
+class _DanmakuLayerState extends State<_DanmakuLayer> {
+  @override
+  void dispose() {
+    widget.controller.onDanmakuViewDetached();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 void showPlayerSettings(LiveRoomController controller) {

@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:fixnum/fixnum.dart';
 import 'package:simple_live_core/src/common/danmaku_decode_worker.dart';
+import 'package:simple_live_core/src/common/live_metrics.dart';
 import 'package:simple_live_core/src/danmaku/proto/douyin.pb.dart';
 import 'package:tars_dart/tars/codec/tars_output_stream.dart';
 import 'package:tars_dart/tars/codec/tars_struct.dart';
@@ -57,6 +58,52 @@ void main() {
 
     tearDown(() {
       worker.dispose();
+    });
+
+    test('caps the queue and drops oldest frames instead of growing', () async {
+      LiveMetrics.instance.reset();
+      final futures = <Future<Map<String, dynamic>>>[];
+      // 同步连发：投递循环还没来得及启动，队列会先被顶满。
+      // 修复前这里每一帧都会挂起等待，内存随帧数线性增长。
+      for (var i = 0; i < 200; i++) {
+        futures.add(
+          worker.decodeDouyu(
+            buildDouyuFrame('type@=chatmsg/nn@=u$i/txt@=m$i/dms@=1/'),
+          ),
+        );
+      }
+
+      expect(worker.debugQueuedFrames, lessThanOrEqualTo(
+        DanmakuDecodeWorker.maxQueuedFrames,
+      ));
+      expect(worker.debugQueuedBytes, lessThanOrEqualTo(
+        DanmakuDecodeWorker.maxQueuedBytes,
+      ));
+
+      final results = await Future.wait(futures)
+          .timeout(const Duration(seconds: 10));
+
+      // 被丢弃的帧以空结果返回，不会悬挂
+      expect(results.where((r) => r['dropped'] == true), isNotEmpty);
+      expect(
+        LiveMetrics.instance.decoderDroppedFrames,
+        greaterThan(0),
+      );
+
+      // 未被丢弃的帧仍然按顺序解出
+      final delivered = results
+          .where((r) => r['dropped'] != true)
+          .expand((r) => (r['messages'] as List).cast<Map>())
+          .map((m) => m['message'] as String)
+          .toList();
+      final expectedOrder = List<String>.generate(200, (i) => 'm$i');
+      final deliveredIndexes = delivered
+          .map((text) => expectedOrder.indexOf(text))
+          .toList();
+      expect(deliveredIndexes, orderedEquals(List.of(deliveredIndexes)..sort()));
+      expect(worker.debugInFlightFrames, lessThanOrEqualTo(
+        DanmakuDecodeWorker.maxInFlightFrames,
+      ));
     });
 
     test('decodes a Bilibili frame away from the caller', () async {
