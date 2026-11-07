@@ -227,7 +227,7 @@ Widget buildDanmuView(VideoState videoState, LiveRoomController controller) {
         option: DanmakuOption(
           fontSize: AppSettingsController.instance.danmuSize.value.w,
           area: AppSettingsController.instance.danmuArea.value,
-          duration: AppSettingsController.instance.danmuSpeed.value.toInt(),
+          duration: AppSettingsController.instance.danmuSpeed.value,
           opacity: AppSettingsController.instance.danmuOpacity.value,
         ),
       );
@@ -456,7 +456,7 @@ void showPlayerSettings(LiveRoomController controller) {
                     AppSettingsController.instance.setDanmuSpeed(e);
                     controller.updateDanmuOption(
                       controller.danmakuController?.option.copyWith(
-                        duration: (e as double).toInt(),
+                        duration: e as double,
                       ),
                     );
                   },
