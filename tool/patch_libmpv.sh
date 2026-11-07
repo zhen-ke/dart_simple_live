@@ -8,8 +8,12 @@
 #   bash tool/patch_libmpv.sh
 #
 # 环境变量：
-#   GH_REPO      资产所在仓库（默认 zhen-ke/dart_simple_live，供 fork 覆盖）
-#   LIBMPV_TAG   release tag（默认 libmpv_v0.8.0）
+#   GH_REPO      资产所在仓库。生产值见 build_macos.yml
+#                （当前：ister-app/libmpv-darwin-build，mpv 0.41.0 /
+#                ffmpeg 9.0.1 预编译）；
+#                自产备份：GH_REPO=zhen-ke/dart_simple_live
+#                LIBMPV_TAG=libmpv_v0.8.0（先跑 build_libmpv.yml）
+#   LIBMPV_TAG   release tag（默认 v0.8.4）
 #
 # tool/libmpv/xcframework.sha256 存在时同时替换 Makefile 的校验值；
 # 不存在则移除校验行（自产资产，靠 HTTPS 完整性）。首次构建完成后
@@ -27,8 +31,8 @@ if [ -z "$PKG_DIR" ]; then
 fi
 
 MAKEFILE="$PKG_DIR/macos/Makefile"
-GH_REPO="${GH_REPO:-zhen-ke/dart_simple_live}"
-LIBMPV_TAG="${LIBMPV_TAG:-libmpv_v0.8.0}"
+GH_REPO="${GH_REPO:-ister-app/libmpv-darwin-build}"
+LIBMPV_TAG="${LIBMPV_TAG:-v0.8.4}"
 VERSION="${LIBMPV_TAG#libmpv_}"
 ASSET="libmpv-xcframeworks_${VERSION}_macos-universal-video-default.tar.gz"
 URL="https://github.com/${GH_REPO}/releases/download/${LIBMPV_TAG}/${ASSET}"

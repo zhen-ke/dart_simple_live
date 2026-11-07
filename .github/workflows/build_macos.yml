@@ -83,10 +83,14 @@ jobs:
         working-directory: simple_live_app
         run: flutter pub get
 
-      # 将 media_kit_libs 的 libmpv 换为本仓库 release 自产资产
-      # (mpv 0.40.0 / ffmpeg 7.1.5)；需先运行过一次 build_libmpv.yml
+      # 将 media_kit_libs 的 libmpv 换为第三方预编译资产
+      # (ister-app/libmpv-darwin-build@v0.8.4: mpv 0.41.0 / ffmpeg 9.0.1)
+      # 备份路径：自产资产见 build_libmpv.yml + patch_libmpv.sh 内注释
       - name: Patch libmpv xcframework source
         working-directory: simple_live_app
+        env:
+          GH_REPO: ister-app/libmpv-darwin-build
+          LIBMPV_TAG: v0.8.4
         run: bash ../tool/patch_libmpv.sh
 
       - name: Install flutter_distributor
