@@ -79,6 +79,9 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
   Timer? _chatFlushTimer;
   Worker? _shieldPatternWorker;
 
+  /// 开播状态监听：确认下播时统一释放屏幕常亮
+  Worker? _liveStatusWorker;
+
   /// 弹幕显示预算：待显示队列与单批次提交上限，
   /// 高热房间过载时丢弃旧弹幕，优先保视频播放
   static const int _maxPendingDanmaku = 400;
@@ -209,6 +212,13 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
       const Duration(seconds: 30),
       (_) => removeSuperChats(),
     );
+    _liveStatusWorker = ever(liveStatus, (status) {
+      // 确认下播等于播放会话终结：各"不再播放"赋值路径经此
+      // 统一释放屏幕常亮；断流恢复中的瞬时事件不经过这里
+      if (status == LiveStatus.offline) {
+        unawaited(WakelockPlus.disable());
+      }
+    });
     loadData();
 
     scrollController.addListener(scrollListener);
@@ -1053,6 +1063,14 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     if (!_recovering) return;
     _recovering = false;
     _recoveryDeadline = null;
+    if (!succeeded) {
+      // 恢复终局才释放屏幕常亮；mpv 仍在出画面（playing 且非
+      // idle 空转）时属于误判，不放锁
+      final stillPlaying = isPlayerCreated &&
+          player.state.playing &&
+          !player.state.buffering;
+      if (!stillPlaying) unawaited(WakelockPlus.disable());
+    }
     LiveMetrics.instance.recordRecoveryEnd(succeeded: succeeded);
   }
 
@@ -1800,6 +1818,8 @@ ${errorStackTrace ?? (error is Error ? (error as Error).stackTrace : "")}''');
     _clearPendingMessages();
     _shieldPatternWorker?.dispose();
     _shieldPatternWorker = null;
+    _liveStatusWorker?.dispose();
+    _liveStatusWorker = null;
     _liveDurationTimer?.cancel(); // 页面关闭时取消定时器
     _scPruneTimer?.cancel();
     _stablePlayTimer?.cancel();

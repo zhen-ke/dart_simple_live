@@ -514,8 +514,8 @@ mixin PlayerSystemMixin on PlayerMixin, PlayerStateMixin, PlayerDanmakuMixin {
   void initSystem() async {
     SystemControlService.instance.setShowSystemVolumeUI(false);
 
-    // 屏幕常亮
-    //WakelockPlus.enable();
+    // 屏幕常亮：由播放会话边界维护（initializePlayer 持有，
+    // 恢复终局/退出房间释放），进房时尚未开播不提前持有
 
     // 启动控制器可见性评估
     startControlsEvaluator();
@@ -974,6 +974,11 @@ class PlayerController extends BaseController
   @override
   Future<void> initializePlayer() {
     _initStreamOnce();
+    // 屏幕常亮的持有边界是"播放会话"而非 mpv 事件：从这里到退出
+    // 房间，断流/换线/恢复期间用户都在观看，锁不能被瞬时 error/eof
+    // 事件反复放掉（macOS 上一旦放锁且用户已 idle 超时会立刻锁屏）。
+    // 终局释放见 LiveRoomController._endRecovery 与 resetSystem。
+    unawaited(WakelockPlus.enable());
     final task = super.initializePlayer();
     // 同步附加 VideoController：open/jump 只在 isVideoControllerAttached
     // 为 true 时才等待 vo/hwdec/vid 就绪。页面靠 playerEnabled 在下一帧
@@ -1087,13 +1092,13 @@ class PlayerController extends BaseController
   /// 由子类覆盖，用于同步 UI 的线路显示
   void onPlaylistIndexChanged(int index) {}
 
-  void mediaEnd() {
-    WakelockPlus.disable();
-  }
+  /// 直播 EOF 多为可恢复断流，恢复流程会重新起播；
+  /// 屏幕常亮属于会话边界，不在此释放
+  void mediaEnd() {}
 
-  void mediaError(String error) {
-    WakelockPlus.disable();
-  }
+  /// mpv 的 error 事件包含大量可自愈瞬时错误（ffmpeg/tcp 重连、
+  /// 解码报错等），不能当作"不再播放"释放屏幕常亮
+  void mediaError(String error) {}
 
   Future<void> showDebugInfo() async {
     final nativePlayer = player.platform as NativePlayer;
