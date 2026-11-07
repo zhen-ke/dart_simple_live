@@ -1,0 +1,305 @@
+diff --git a/nix/packages/mk-pkg-ffmpeg/default.nix b/nix/packages/mk-pkg-ffmpeg/default.nix
+index 060869c..96e8188 100644
+--- a/nix/packages/mk-pkg-ffmpeg/default.nix
++++ b/nix/packages/mk-pkg-ffmpeg/default.nix
+@@ -43,7 +43,6 @@ let
+ 
+     cd $src
+     patch -p1 <${../../../patches/ffmpeg-fix-vp9-hwaccel.patch}
+-    patch -p1 <${../../../patches/ffmpeg-fix-hls-mp4-seek.patch}
+     patch -p1 <${../../../patches/ffmpeg-fix-ios-hdr-texture.patch}
+     patch -p1 <${../../../patches/ffmpeg-fix-dash-base-url-escape.patch}
+     cd -
+diff --git a/nix/packages/mk-pkg-libplacebo/default.nix b/nix/packages/mk-pkg-libplacebo/default.nix
+new file mode 100644
+index 0000000..69fc5aa
+--- /dev/null
++++ b/nix/packages/mk-pkg-libplacebo/default.nix
+@@ -0,0 +1,68 @@
++{
++  pkgs ? import ../../utils/default/pkgs.nix,
++  os ? import ../../utils/default/os.nix,
++  arch ? pkgs.callPackage ../../utils/default/arch.nix { },
++}:
++
++let
++  name = "libplacebo";
++  packageLock = (import ../../../packages.lock.nix).${name};
++  inherit (packageLock) version;
++
++  callPackage = pkgs.lib.callPackageWith { inherit pkgs os arch; };
++  nativeFile = callPackage ../../utils/native-file/default.nix { };
++  crossFile = callPackage ../../utils/cross-file/default.nix { };
++
++  pname = import ../../utils/name/package.nix name;
++  src = callPackage ../../utils/fetch-tarball/default.nix {
++    name = "${pname}-source-${version}";
++    inherit (packageLock) url sha256;
++  };
++in
++
++# mpv >= 0.38 makes libplacebo a hard dependency. Only the OpenGL
++# backend is needed: media_kit renders through MPV_RENDER_API_TYPE_OPENGL
++# into a Flutter texture (vo=libmpv). Vulkan/Metal/D3D11 paths stay off.
++pkgs.stdenvNoCC.mkDerivation {
++  name = "${pname}-${os}-${arch}-${version}";
++  pname = pname;
++  inherit version;
++  inherit src;
++  dontUnpack = true;
++  enableParallelBuilding = true;
++  nativeBuildInputs = [
++    pkgs.meson
++    pkgs.ninja
++    pkgs.pkg-config
++    pkgs.python3
++  ];
++  configurePhase = ''
++    meson setup build $src \
++      --native-file ${nativeFile} \
++      --cross-file ${crossFile} \
++      --prefix=$out \
++      -Ddefault_library=shared \
++      -Dvulkan=disabled \
++      -Dvk-proc-addr=disabled \
++      -Dopengl=enabled \
++      -Dgl-proc-addr=enabled \
++      -Dd3d11=disabled \
++      -Dglslang=disabled \
++      -Dshaderc=disabled \
++      -Dlcms=disabled \
++      -Ddovi=disabled \
++      -Dlibdovi=disabled \
++      -Dunwind=disabled \
++      -Dxxhash=disabled \
++      -Ddemos=false \
++      -Dtests=false \
++      -Dbench=false \
++      -Dfuzz=false
++  '';
++  buildPhase = ''
++    meson compile -vC build
++  '';
++  installPhase = ''
++    meson install -C build
++  '';
++}
+diff --git a/nix/packages/mk-pkg-mpv/default.nix b/nix/packages/mk-pkg-mpv/default.nix
+index 543805a..36fca40 100644
+--- a/nix/packages/mk-pkg-mpv/default.nix
++++ b/nix/packages/mk-pkg-mpv/default.nix
+@@ -26,6 +26,7 @@ let
+   ffmpeg = callPackage ../mk-pkg-ffmpeg/default.nix { };
+   uchardet = callPackage ../mk-pkg-uchardet/default.nix { };
+   libass = callPackage ../mk-pkg-libass/default.nix { };
++  libplacebo = callPackage ../mk-pkg-libplacebo/default.nix { };
+ 
+   nativeBuildInputs = [
+     pkgs.meson
+@@ -75,6 +76,7 @@ pkgs.stdenvNoCC.mkDerivation {
+     ++ pkgs.lib.optionals (variant == "video") [
+       uchardet
+       libass
++      libplacebo
+     ];
+   configurePhase = ''
+     DISABLE_ALL_OPTIONS=(
+@@ -84,7 +86,6 @@ pkgs.stdenvNoCC.mkDerivation {
+       -Dlibmpv=false `# libmpv library`
+       -Dbuild-date=false `# whether to include binary compile time`
+       -Dtests=false `# unit tests (development only)`
+-      -Dta-leak-report=false `# enable ta leak report by default (development only)`
+ 
+       `# misc features`
+       -Dcdda=disabled `# cdda support (libcdio)`
+@@ -102,12 +103,10 @@ pkgs.stdenvNoCC.mkDerivation {
+       -Drubberband=disabled `# librubberband support`
+       -Dsdl2=disabled `# SDL2`
+       -Dsdl2-gamepad=disabled `# SDL2 gamepad input`
+-      -Dstdatomic=disabled `# C11 stdatomic.h`
+       -Duchardet=disabled `# uchardet support`
+       -Duwp=disabled `# Universal Windows Platform`
+       -Dvapoursynth=disabled `# VapourSynth filter bridge`
+       -Dvector=disabled `# GCC vector instructions`
+-      -Dwin32-internal-pthreads=disabled `#internal pthread wrapper for win32 (Vista+)`
+       -Dzimg=disabled `# libzimg support (high quality software scaler)`
+       -Dzlib=disabled `# zlib`
+ 
+@@ -146,8 +145,6 @@ pkgs.stdenvNoCC.mkDerivation {
+       -Dgl-win32=disabled `# OpenGL Win32 Backend`
+       -Dgl-x11=disabled `# OpenGL X11/GLX (deprecated/legacy)`
+       -Djpeg=disabled `# JPEG support`
+-      -Dlibplacebo=disabled `# libplacebo support`
+-      -Drpi=disabled `# Raspberry Pi support`
+       -Dsdl2-video=disabled `# SDL2 video output`
+       -Dshaderc=disabled `# libshaderc SPIR-V compiler`
+       -Dsixel=disabled `# Sixel`
+@@ -159,7 +156,6 @@ pkgs.stdenvNoCC.mkDerivation {
+       -Dvaapi-drm=disabled `# VAAPI (DRM/EGL support)`
+       -Dvaapi-wayland=disabled `# VAAPI (Wayland support)`
+       -Dvaapi-x11=disabled `# VAAPI (X11 support)`
+-      -Dvaapi-x-egl=disabled `# VAAPI EGL on X11`
+       -Dvulkan=disabled `# Vulkan context support`
+       -Dwayland=disabled `# Wayland`
+       -Dx11=disabled `# X11`
+@@ -173,13 +169,9 @@ pkgs.stdenvNoCC.mkDerivation {
+       -Dd3d9-hwaccel=disabled `# DXVA2 hwaccel`
+       -Dgl-dxinterop-d3d9=disabled `# OpenGL/DirectX Interop Backend DXVA2 interop`
+       -Dios-gl=disabled `# iOS OpenGL ES hardware decoding interop support`
+-      -Drpi-mmal=disabled `# Raspberry Pi MMAL hwaccel`
+       -Dvideotoolbox-gl=disabled `# Videotoolbox with OpenGL`
+ 
+       `# macOS features`
+-      -Dmacos-10-11-features=disabled `# macOS 10.11 SDK Features`
+-      -Dmacos-10-12-2-features=disabled `# macOS 10.12.2 SDK Features`
+-      -Dmacos-10-14-features=disabled `# macOS 10.14 SDK Features`
+       -Dmacos-cocoa-cb=disabled `# macOS libmpv backend`
+       -Dmacos-media-player=disabled `# macOS Media Player support`
+       -Dmacos-touchbar=disabled `# macOS Touch Bar support`
+diff --git a/packages.lock.nix b/packages.lock.nix
+index aed6a72..c1afff1 100644
+--- a/packages.lock.nix
++++ b/packages.lock.nix
+@@ -5,9 +5,9 @@
+     sha256 = "a4003623cdc0109dec3aac8435520aa3fb12c4d69454fa227f2658cdb6dab5fa";
+   };
+   ffmpeg = {
+-    version = "6.0";
+-    url = "https://ffmpeg.org/releases/ffmpeg-6.0.tar.xz";
+-    sha256 = "57be87c22d9b49c112b6d24bc67d42508660e6b718b3db89c44e47e289137082";
++    version = "7.1.5";
++    url = "https://ffmpeg.org/releases/ffmpeg-7.1.5.tar.xz";
++    sha256 = "de668509caf9e35e3cd162473441fdb29538c6d96ed080292b3cf9e6fc5d558f";
+   };
+   fftools-ffi = {
+     version = "9b0d4da0";
+@@ -75,9 +75,14 @@
+     sha256 = "a420fcf7103e54e775c383e3751729b8fb2dcd087f6165befd13f28315f754f5";
+   };
+   mpv = {
+-    version = "0.36.0";
+-    url = "https://github.com/mpv-player/mpv/archive/refs/tags/v0.36.0.tar.gz";
+-    sha256 = "29abc44f8ebee013bb2f9fe14d80b30db19b534c679056e4851ceadf5a5e8bf6";
++    version = "0.40.0";
++    url = "https://github.com/mpv-player/mpv/archive/refs/tags/v0.40.0.tar.gz";
++    sha256 = "10a0f4654f62140a6dd4d380dcf0bbdbdcf6e697556863dc499c296182f081a3";
++  };
++  libplacebo = {
++    version = "7.349.0";
++    url = "https://github.com/haasn/libplacebo/archive/refs/tags/v7.349.0.tar.gz";
++    sha256 = "627e32439a0b3d2b90368ead7e919f470ee7446c87cc0f7841bbe319b23aa8b1";
+   };
+   uchardet = {
+     version = "0.0.8";
+diff --git a/patches/ffmpeg-fix-hls-mp4-seek.patch b/patches/ffmpeg-fix-hls-mp4-seek.patch
+deleted file mode 100644
+index 58bffce..0000000
+--- a/patches/ffmpeg-fix-hls-mp4-seek.patch
++++ /dev/null
+@@ -1,14 +0,0 @@
+-diff --git a/libavformat/hls.c b/libavformat/hls.c
+-index 2a2fe28a540f..c625e3029116 100644
+---- a/libavformat/hls.c
+-+++ b/libavformat/hls.c
+-@@ -2506,6 +2506,9 @@ static int hls_read_seek(AVFormatContext *s, int stream_index,
+-         /* Flush the packet queue of the subdemuxer. */
+-         ff_read_frame_flush(pls->ctx);
+- 
+-+        /* Reset the init segment so it's re-fetched and served appropiately */
+-+        pls->cur_init_section = NULL;
+-+
+-         pls->seek_timestamp = seek_timestamp;
+-         pls->seek_flags = flags;
+- 
+diff --git a/patches/mpv-audiounit-shared-session.patch b/patches/mpv-audiounit-shared-session.patch
+index e0ec97d..4ec51be 100644
+--- a/patches/mpv-audiounit-shared-session.patch
++++ b/patches/mpv-audiounit-shared-session.patch
+@@ -23,21 +23,21 @@
+  static OSStatus au_get_ary(AudioUnit unit, AudioUnitPropertyID inID, AudioUnitScope inScope, AudioUnitElement inElement, void **data, UInt32 *outDataSize)
+  {
+      OSStatus err;
+-@@ -81,8 +88,60 @@
+-     talloc_free(layout);
++@@ -82,7 +89,60 @@
+      return new_layout;
+  }
+-+
+-+static void acquire_audio_session(struct ao *ao, NSInteger pref_channels)
++ 
+++static void acquire_audio_session(struct ao *ao, NSInteger pref_channels,
+++                                  AVAudioSessionCategoryOptions options)
+ +{
+ +    struct priv *p = ao->priv;
+ +    AVAudioSession *instance = AVAudioSession.sharedInstance;
+-+
++ 
+ +    pthread_mutex_lock(&audiounit_session_lock);
+ +
+ +    if (audiounit_session_use_count == 0) {
+ +        [instance setCategory:AVAudioSessionCategoryPlayback
+-+                  withOptions:AVAudioSessionCategoryOptionMixWithOthers
+++                  withOptions:options
+ +                        error:nil];
+ +        [instance setMode:AVAudioSessionModeMoviePlayback error:nil];
+ +        [instance setActive:YES error:nil];
+@@ -60,12 +60,12 @@
+ +        return;
+ +
+ +    pthread_mutex_lock(&audiounit_session_lock);
+- 
+++
+ +    if (audiounit_session_use_count > 0)
+ +        audiounit_session_use_count--;
+ +    else
+ +        MP_WARN(ao, "audio session reference count underflow\n");
+- 
+++
+ +    p->session_acquired = false;
+ +
+ +    if (audiounit_session_use_count == 0) {
+@@ -84,20 +84,20 @@
+  static OSStatus render_cb_lpcm(void *ctx, AudioUnitRenderActionFlags *aflags,
+                                const AudioTimeStamp *ts, UInt32 bus,
+                                UInt32 frames, AudioBufferList *buffer_list)
+-@@ -115,10 +174,8 @@
+- 
+-     MP_VERBOSE(ao, "max channels: %ld, requested: %d\n", maxChannels, (int)ao->channels.num);
++@@ -120,10 +180,8 @@
++         options |= AVAudioSessionCategoryOptionMixWithOthers;
++     }
+  
+--    [instance setCategory:AVAudioSessionCategoryPlayback error:nil];
++-    [instance setCategory:AVAudioSessionCategoryPlayback withOptions:options error:nil];
+ -    [instance setMode:AVAudioSessionModeMoviePlayback error:nil];
+ -    [instance setActive:YES error:nil];
+ -    [instance setPreferredOutputNumberOfChannels:prefChannels error:nil];
+ +    if (!p->skip_session_management)
+-+        acquire_audio_session(ao, prefChannels);
+++        acquire_audio_session(ao, prefChannels, options);
+  
+      AudioComponentDescription desc = (AudioComponentDescription) {
+          .componentType         = kAudioUnitType_Output,
+-@@ -201,6 +258,8 @@
++@@ -206,6 +264,8 @@
+  coreaudio_error_component:
+      AudioComponentInstanceDispose(p->audio_unit);
+  coreaudio_error:
+@@ -106,7 +106,7 @@
+      talloc_free(layout);
+      return false;
+  }
+-@@ -230,10 +289,8 @@
++@@ -235,10 +295,8 @@
+      AudioUnitUninitialize(p->audio_unit);
+      AudioComponentInstanceDispose(p->audio_unit);
+  
+@@ -119,7 +119,7 @@
+  }
+  
+  static int init(struct ao *ao)
+-@@ -257,4 +314,9 @@
++@@ -262,4 +320,9 @@
+      .reset          = stop,
+      .start          = start,
+      .priv_size      = sizeof(struct priv),

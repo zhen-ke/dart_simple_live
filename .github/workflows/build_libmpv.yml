@@ -1,0 +1,117 @@
+name: Build libmpv
+
+# 一次性工作流：基于 media-kit/libmpv-darwin-build 构建自产 libmpv
+# (mpv 0.40.0 + ffmpeg 7.1.5 + libplacebo 7.349.0)，产出
+# libmpv-xcframeworks tarball 并发布到本仓库 Release。
+#
+# 使用方式：
+#   手动触发，version 输入资产版本（默认 v0.8.0）→ 产出 release
+#   tag `libmpv_v0.8.0`，内含
+#   libmpv-xcframeworks_v0.8.0_macos-universal-video-default.tar.gz。
+#   build_macos.yml 中 tool/patch_libmpv.sh 会把 media_kit_libs 的
+#   下载地址指到该资产，URL/tag/文件名必须与此处输出保持一致。
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'libmpv bundle version (e.g. v0.8.0)'
+        required: true
+        default: 'v0.8.0'
+        type: string
+      upstream_ref:
+        description: 'libmpv-darwin-build ref to build on'
+        required: true
+        default: 'v0.7.3'
+        type: string
+
+concurrency:
+  group: libmpv-build
+  cancel-in-progress: true
+
+jobs:
+  build-libmpv:
+    runs-on: macos-15
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout upgrade patch
+        uses: actions/checkout@v4
+        with:
+          path: app
+
+      - name: Checkout libmpv-darwin-build
+        uses: actions/checkout@v4
+        with:
+          repository: media-kit/libmpv-darwin-build
+          ref: ${{ inputs.upstream_ref }}
+          path: libmpv-darwin-build
+
+      - name: Apply mpv 0.40 / ffmpeg 7.1 upgrade patch
+        working-directory: libmpv-darwin-build
+        run: |
+          git apply --check ../app/tool/libmpv/mpv-0.40-ffmpeg-7.1.patch
+          git apply ../app/tool/libmpv/mpv-0.40-ffmpeg-7.1.patch
+          git status --short
+
+      - uses: DeterminateSystems/nix-installer-action@v22
+        with:
+          extra-conf: |
+            sandbox = true
+            sandbox-fallback = false
+
+      - name: Nix version
+        run: nix --version
+
+      - uses: DeterminateSystems/magic-nix-cache-action@v13
+        with:
+          use-flakehub: false
+
+      # 与上游 ci.yaml 相同：优先固定 Xcode，缺失时回退到默认 toolchain
+      - name: Xcode path
+        id: xcode_path
+        run: |
+          if [ -d /Applications/Xcode_16.1.0.app ]; then
+            XCODE_PATH=$(realpath /Applications/Xcode_16.1.0.app)
+          else
+            XCODE_PATH=$(realpath "$(xcode-select -p)/../..")
+          fi
+          ${XCODE_PATH}/Contents/Developer/usr/bin/xcodebuild -version
+          echo "xcode_path=${XCODE_PATH}" >> $GITHUB_OUTPUT
+
+      - name: Build xcframeworks
+        working-directory: libmpv-darwin-build
+        env:
+          XCODE_PATH: ${{ steps.xcode_path.outputs.xcode_path }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          nix develop -c make \
+            XCODE_PATH=${XCODE_PATH} \
+            VERSION=${VERSION} \
+            TARGET=mk-out-archive-xcframeworks-macos-universal-video-default
+
+      - name: List outputs & sha256
+        working-directory: libmpv-darwin-build
+        run: |
+          ls -lh result/
+          shasum -a 256 result/libmpv-xcframeworks_${{ inputs.version }}_macos-universal-video-default.tar.gz
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: libmpv-xcframeworks-${{ inputs.version }}
+          path: libmpv-darwin-build/result/*.tar.gz
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: libmpv_${{ inputs.version }}
+          name: libmpv ${{ inputs.version }} (mpv 0.40.0 / ffmpeg 7.1.5)
+          body: |
+            自产 libmpv xcframeworks：mpv 0.40.0 + ffmpeg 7.1.5 + libplacebo 7.349.0。
+            由 build_libmpv.yml 基于 media-kit/libmpv-darwin-build@${{ inputs.upstream_ref }}
+            + tool/libmpv/mpv-0.40-ffmpeg-7.1.patch 构建。
+          files: |
+            libmpv-darwin-build/result/libmpv-xcframeworks_${{ inputs.version }}_macos-universal-video-default.tar.gz
+          fail_on_unmatched_files: true
