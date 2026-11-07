@@ -37,7 +37,7 @@ dependencies:
   lottie: ^3.3.2 #Lottie动画
   qr_flutter: ^4.1.0 #二维码
   sticky_headers: ^0.3.0+2 #吸顶
-  canvas_danmaku: ^0.2.7 #弹幕
+  canvas_danmaku: ^0.3.4 #弹幕
 
   #系统交互
   package_info_plus: ^9.0.0 #包信息
