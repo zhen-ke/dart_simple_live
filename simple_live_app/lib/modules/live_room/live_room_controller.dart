@@ -1730,6 +1730,9 @@ ${errorStackTrace ?? (error is Error ? (error as Error).stackTrace : "")}''');
     if (state == AppLifecycleState.resumed) {
       Log.d("返回前台");
       isBackground = false;
+      // DanmakuScreen 在 paused 时自行 pause()，但包内没有
+      // resume 出口；不恢复则 _running 卡在 false，弹幕被静默丢弃
+      danmakuController?.resume();
       _resumeDanmakuAfterBackground();
     }
   }
