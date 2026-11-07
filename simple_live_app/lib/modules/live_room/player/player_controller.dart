@@ -975,6 +975,10 @@ class PlayerController extends BaseController
   Future<void> initializePlayer() {
     _initStreamOnce();
     final task = super.initializePlayer();
+    // 同步附加 VideoController：open/jump 只在 isVideoControllerAttached
+    // 为 true 时才等待 vo/hwdec/vid 就绪。页面靠 playerEnabled 在下一帧
+    // 才挂载 Video，晚于 open 附加会让 mpv 以 vid=no 起播（有声无图）
+    unawaited(videoController.platform.future);
     // 音量在播放器创建时落地一次，替代 onInit 里的提前构造
     player.setVolume(AppSettingsController.instance.playerVolume.value);
     return task;
@@ -991,6 +995,7 @@ class PlayerController extends BaseController
   StreamSubscription? _videoParamsSubscription;
   StreamSubscription? _logSubscription;
   StreamSubscription? _playingSubscription;
+  StreamSubscription? _playlistSubscription;
 
   /// mpv 日志订阅与事件打印的门禁：profile 用于性能测量，
   /// 订阅 mpv log 本身就有解析开销，必须与普通日志一起默认静默
@@ -1045,6 +1050,13 @@ class PlayerController extends BaseController
       }
       _updateVerticalByPlayerSize();
     });
+    // 回读真实播放索引：mpv 在某条 playlist 条目失效时会自动推进
+    // playlist-playing-pos，UI 的线路索引必须跟随而非假设
+    _playlistSubscription = player.stream.playlist.listen((playlist) {
+      // stop() 会发出空表事件，与线路索引无关
+      if (playlist.medias.isEmpty) return;
+      onPlaylistIndexChanged(playlist.index);
+    });
   }
 
   void disposeStream() {
@@ -1062,12 +1074,18 @@ class PlayerController extends BaseController
     _pipSubscription = null;
     _playingSubscription?.cancel();
     _playingSubscription = null;
+    _playlistSubscription?.cancel();
+    _playlistSubscription = null;
     _streamInitialized = false;
   }
 
   /// 播放器进入播放态的钩子：由子类覆盖，
   /// 用于首帧链路计时与恢复结果记账
   void onPlayingStarted() {}
+
+  /// mpv 实际播放索引变化的钩子（自动跳线/跳项时触发）：
+  /// 由子类覆盖，用于同步 UI 的线路显示
+  void onPlaylistIndexChanged(int index) {}
 
   void mediaEnd() {
     WakelockPlus.disable();

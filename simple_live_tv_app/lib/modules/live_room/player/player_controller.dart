@@ -340,7 +340,12 @@ class PlayerController extends BaseController
   @override
   Future<void> initializePlayer() {
     _initStreamOnce();
-    return super.initializePlayer();
+    final task = super.initializePlayer();
+    // 同步附加 VideoController：open/jump 只在 isVideoControllerAttached
+    // 为 true 时才等待 vo/hwdec/vid 就绪。页面靠 playerEnabled 在下一帧
+    // 才挂载 Video，晚于 open 附加会让 mpv 以 vid=no 起播（有声无图）
+    unawaited(videoController.platform.future);
+    return task;
   }
 
   void _initStreamOnce() {

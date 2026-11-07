@@ -205,10 +205,16 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     return false;
   }
 
-  void refreshRoom() {
+  void refreshRoom() async {
     //messages.clear();
 
-    liveDanmaku.stop();
+    // 等旧的关闭再发起新连接：同实例 stop/start 并发会让
+    // 关闭流程的后半段把刚建好的连接掐掉；关闭失败不挡重载
+    try {
+      await liveDanmaku.stop();
+    } catch (e) {
+      Log.logPrint(e);
+    }
 
     loadData();
   }
@@ -344,9 +350,10 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
       _qualitesMs = _loadStopwatch.elapsedMilliseconds;
 
       if (playQualites.isEmpty) {
-        // 快速切房后旧会话的提示不再打扰新房间
+        // 快速切房后旧会话的提示不再打扰新房间。
+        // errorMsg 驱动播放区重试遮罩：只弹 toast 会留一个无路可走的黑屏
         if (_sessionAlive(gen)) {
-          SmartDialog.showToast("无法读取播放清晰度");
+          errorMsg.value = "无法读取播放清晰度";
         }
         return;
       }
@@ -370,7 +377,7 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     } catch (e) {
       Log.logPrint(e);
       if (_sessionAlive(gen)) {
-        SmartDialog.showToast("无法读取播放清晰度");
+        errorMsg.value = "无法读取播放清晰度";
       }
     }
   }
@@ -436,7 +443,8 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
       // 会话已结束，或存在更新的取流请求：丢弃本次结果
       if (!_sessionAlive(gen) || req != _playUrlGen) return false;
       if (playUrl.urls.isEmpty) {
-        SmartDialog.showToast("无法读取播放地址");
+        // 写入 errorMsg 让播放区出现重试入口；只 toast 是黑屏死路
+        errorMsg.value = "无法读取播放地址";
         return false;
       }
       playUrls.clear();
@@ -456,7 +464,7 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     } catch (e) {
       Log.logPrint(e);
       if (_sessionAlive(gen) && req == _playUrlGen) {
-        SmartDialog.showToast("读取播放地址失败");
+        errorMsg.value = "读取播放地址失败";
       }
       return false;
     }
@@ -491,9 +499,13 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
       }
       // 按当前线路的实际流类型校正 cache-secs（FLV/HLS 预读不同）
       await applyDemuxerCacheSecsFor(playUrls[currentLineIndex]);
+      // 校正期间会话/取流可能已被取代：不得用过期状态发起 open
+      if (!_sessionAlive(gen) || req != _playUrlGen) return;
       _openIssuedAt = DateTime.now();
       final playUrl = _resolvePlayUrl(playUrls[currentLineIndex]);
-      player.open(
+      // open 必须 await：异步抛错（通道失败/播放器已释放）否则会
+      // 变成无人接管的 unhandled error，用户也看不到任何失败反馈
+      await player.open(
         Media(
           playUrl,
           httpHeaders: playHeaders,
@@ -502,8 +514,12 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
 
       Log.d("播放链接\r\n：$playUrl");
     } catch (e) {
-      // setPlayer 多以 unawaited 方式调用，错误必须就地消化
+      // setPlayer 多以 unawaited 方式调用，错误必须就地消化；
+      // 同时让播放区出现重试入口，不能静默成黑屏
       Log.logPrint(e);
+      if (_sessionAlive(gen) && req == _playUrlGen) {
+        errorMsg.value = "播放失败";
+      }
     }
   }
 
@@ -851,9 +867,14 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     // 重新设置LiveDanmaku
     liveDanmaku = site.liveSite.getDanmaku();
 
-    // 停止播放：从未创建过播放器就不必为了 stop 去构造一个 mpv 实例
+    // 停止播放：从未创建过播放器就不必为了 stop 去构造一个 mpv 实例。
+    // 停流失败不能跳过 loadData——否则切房后停在旧房间再也刷不动
     if (isPlayerCreated) {
-      await player.stop();
+      try {
+        await player.stop();
+      } catch (e, s) {
+        Log.e("切房停流失败", s);
+      }
     }
 
     // 刷新信息
@@ -943,16 +964,27 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
             Duration(milliseconds: heartbeatMs * 2);
     if (tooLong) {
       Log.d("后台时间过长，重连弹幕服务器");
-      unawaited(liveDanmaku.stop());
-      initDanmau();
-      unawaited(
-        liveDanmaku.start(detail.value?.danmakuData).catchError((e) {
-          Log.logPrint(e);
-        }),
-      );
+      // 串行 stop→start：关闭未落地就重连会与旧连接互相踩踏
+      unawaited(_reconnectDanmaku());
       return;
     }
     liveDanmaku.resumeHeartbeat();
+  }
+
+  Future<void> _reconnectDanmaku() async {
+    // 快照会话代次：stop 期间可能已切房——liveDanmaku 换成新实例后，
+    // 旧流程不得对新实例再 start（会和新会话自己的 start 抢连）
+    final gen = _sessionGen;
+    try {
+      await liveDanmaku.stop();
+    } catch (e) {
+      Log.logPrint(e);
+    }
+    if (!_sessionAlive(gen)) return;
+    initDanmau();
+    await liveDanmaku.start(detail.value?.danmakuData).catchError((e) {
+      Log.logPrint(e);
+    });
   }
 
   @override

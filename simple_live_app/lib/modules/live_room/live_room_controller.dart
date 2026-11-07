@@ -440,11 +440,17 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
   }
   // 弹窗逻辑
 
-  void refreshRoom() {
+  void refreshRoom() async {
     //messages.clear();
     superChats.clear();
     _clearPendingMessages();
-    liveDanmaku.stop();
+    // 等旧的关闭再发起新连接：同实例 stop/start 并发会让
+    // 关闭流程的后半段把刚建好的连接掐掉；关闭失败不挡重载
+    try {
+      await liveDanmaku.stop();
+    } catch (e) {
+      Log.logPrint(e);
+    }
 
     loadData();
   }
@@ -655,9 +661,10 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
       _qualitesMs = _loadStopwatch.elapsedMilliseconds;
 
       if (playQualites.isEmpty) {
-        // 快速切房后旧会话的提示不再打扰新房间
+        // 快速切房后旧会话的提示不再打扰新房间。
+        // errorMsg 驱动播放区重试遮罩：只弹 toast 会留一个无路可走的黑屏
         if (_sessionAlive(gen)) {
-          SmartDialog.showToast("无法读取播放清晰度");
+          errorMsg.value = "无法读取播放清晰度";
         }
         return;
       }
@@ -682,7 +689,7 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     } catch (e) {
       Log.logPrint(e);
       if (_sessionAlive(gen)) {
-        SmartDialog.showToast("无法读取播放清晰度");
+        errorMsg.value = "无法读取播放清晰度";
       }
     }
   }
@@ -719,7 +726,8 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
       // 会话已结束，或存在更新的取流请求：丢弃本次结果
       if (!_sessionAlive(gen) || req != _playUrlGen) return false;
       if (playUrl.urls.isEmpty) {
-        SmartDialog.showToast("无法读取播放地址");
+        // 写入 errorMsg 让播放区出现重试入口；只 toast 是黑屏死路
+        errorMsg.value = "无法读取播放地址";
         return false;
       }
       playUrls.clear();
@@ -739,7 +747,7 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     } catch (e) {
       Log.logPrint(e);
       if (_sessionAlive(gen) && req == _playUrlGen) {
-        SmartDialog.showToast("读取播放地址失败");
+        errorMsg.value = "读取播放地址失败";
       }
       return false;
     }
@@ -783,12 +791,18 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
 
       // 按当前线路的实际流类型校正 cache-secs（FLV/HLS 预读不同）
       await applyDemuxerCacheSecsFor(playUrls[currentLineIndex]);
+      // 校正期间本次取流可能已被取代：open 是覆水难收的动作，发起前再校验
+      if (!_sessionAlive(gen) || req != _playUrlGen) return;
       _openIssuedAt = DateTime.now();
       await player.open(Playlist(_buildMediaList()));
     } catch (e) {
       // initPlaylist 由 getPlayUrl 以 unawaited 方式调用，
-      // 错误必须就地消化（初始化失败可重试，见 _playerInitTask）
+      // 错误必须就地消化（初始化失败可重试，见 _playerInitTask）；
+      // 但要让播放区出现重试入口，不能静默成黑屏
       Log.logPrint(e);
+      if (_sessionAlive(gen) && req == _playUrlGen) {
+        errorMsg.value = "播放失败";
+      }
     }
   }
 
@@ -802,6 +816,7 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
   /// - 返回是否真的发起了重连：无可用线路时交给上层走兜底
   Future<bool> retryCurrentLine() async {
     final gen = _sessionGen;
+    final req = _playUrlGen;
     if (!_sessionAlive(gen)) return false;
     if (!_hasCurrentLine) return false;
     currentLineInfo.value = "线路${currentLineIndex + 1}";
@@ -811,9 +826,12 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     await initializePlayer();
     // 按当前线路的实际流类型校正 cache-secs（FLV/HLS 预读不同）
     await applyDemuxerCacheSecsFor(playUrls[currentLineIndex]);
+    // 校正期间会话/取流可能已被取代：不得用过期状态发起 open；
+    // 返回 true 视为放弃本次——新取流已接管播放，不该再进兜底换线
+    if (!_sessionAlive(gen) || req != _playUrlGen) return true;
     _openIssuedAt = DateTime.now();
     await player.open(Playlist(_buildMediaList()));
-    if (!_sessionAlive(gen)) return true;
+    if (!_sessionAlive(gen) || req != _playUrlGen) return true;
     if (currentLineIndex > 0) {
       await player.jump(currentLineIndex);
     }
@@ -821,17 +839,34 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
   }
 
   void setPlayer() async {
-    if (!_sessionAlive(_sessionGen)) return;
+    final gen = _sessionGen;
+    final req = _playUrlGen;
+    final epoch = _playbackEpoch;
+    if (!_sessionAlive(gen)) return;
     if (!_hasCurrentLine) return;
     currentLineInfo.value = "线路${currentLineIndex + 1}";
     errorMsg.value = "";
 
-    // 幂等：换线时播放器通常已初始化，这里兜底首次直接换线的时序
-    await initializePlayer();
-    // 按当前线路的实际流类型校正 cache-secs（FLV/HLS 预读不同）
-    await applyDemuxerCacheSecsFor(playUrls[currentLineIndex]);
-    _openIssuedAt = DateTime.now();
-    await player.jump(currentLineIndex);
+    try {
+      // 幂等：换线时播放器通常已初始化，这里兜底首次直接换线的时序
+      await initializePlayer();
+      // 按当前线路的实际流类型校正 cache-secs（FLV/HLS 预读不同）
+      await applyDemuxerCacheSecsFor(playUrls[currentLineIndex]);
+      // 校正期间会话/取流/换线可能已被取代：不得对过期状态发起
+      // jump；epoch 校验保证快速连点换线时总是最后一次生效
+      if (!_sessionAlive(gen) || req != _playUrlGen || epoch != _playbackEpoch) {
+        return;
+      }
+      _openIssuedAt = DateTime.now();
+      await player.jump(currentLineIndex);
+    } catch (e) {
+      // setPlayer 以 unawaited 方式被 changePlayLine 调用：就地消化并
+      // 给出可见反馈；旧线路可能仍在播，不能用 errorMsg 遮罩盖住画面
+      Log.logPrint(e);
+      if (_sessionAlive(gen)) {
+        unawaited(SmartDialog.showToast("切换线路失败"));
+      }
+    }
   }
 
   /// 断流事件统一入口：error 与 completed 可能为同一次故障连续
@@ -1019,6 +1054,18 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     _recovering = false;
     _recoveryDeadline = null;
     LiveMetrics.instance.recordRecoveryEnd(succeeded: succeeded);
+  }
+
+  /// mpv 在线路失效时会自动把 playlist-pos 推进到下一条：
+  /// 把真实播放索引回写到 UI，避免"播着线路 N 却显示线路 M"、
+  /// 以及恢复逻辑按错误基线继续换线
+  @override
+  void onPlaylistIndexChanged(int index) {
+    if (_roomClosed) return;
+    if (index < 0 || index >= playUrls.length) return;
+    if (index == currentLineIndex) return;
+    currentLineIndex = index;
+    currentLineInfo.value = "线路${index + 1}";
   }
 
   /// 播放器进入播放态：记录 open→playing 耗时；
@@ -1620,9 +1667,14 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     // 重新设置LiveDanmaku
     liveDanmaku = site.liveSite.getDanmaku();
 
-    // 停止播放：从未创建过播放器就不必为了 stop 去构造一个 mpv 实例
+    // 停止播放：从未创建过播放器就不必为了 stop 去构造一个 mpv 实例。
+    // 停流失败不能跳过 loadData——否则切房后停在旧房间再也刷不动
     if (isPlayerCreated) {
-      await player.stop();
+      try {
+        await player.stop();
+      } catch (e, s) {
+        Log.e("切房停流失败", s);
+      }
     }
 
     // 刷新信息
@@ -1676,17 +1728,28 @@ ${errorStackTrace ?? (error is Error ? (error as Error).stackTrace : "")}''');
             Duration(milliseconds: heartbeatMs * 2);
     if (tooLong) {
       Log.d("后台时间过长，重连弹幕服务器");
-      unawaited(liveDanmaku.stop());
-      initDanmau();
-      unawaited(
-        liveDanmaku.start(detail.value?.danmakuData).catchError((e) {
-          Log.logPrint(e);
-          addSysMsg("弹幕服务器连接失败");
-        }),
-      );
+      // 串行 stop→start：关闭未落地就重连会与旧连接互相踩踏
+      unawaited(_reconnectDanmaku());
       return;
     }
     liveDanmaku.resumeHeartbeat();
+  }
+
+  Future<void> _reconnectDanmaku() async {
+    // 快照会话代次：stop 期间可能已切房——liveDanmaku 换成新实例后，
+    // 旧流程不得对新实例再 start（会和新会话自己的 start 抢连）
+    final gen = _sessionGen;
+    try {
+      await liveDanmaku.stop();
+    } catch (e) {
+      Log.logPrint(e);
+    }
+    if (!_sessionAlive(gen)) return;
+    initDanmau();
+    await liveDanmaku.start(detail.value?.danmakuData).catchError((e) {
+      Log.logPrint(e);
+      addSysMsg("弹幕服务器连接失败");
+    });
   }
 
   // 用于启动开播时长计算和更新的函数
@@ -1698,10 +1761,11 @@ ${errorStackTrace ?? (error is Error ? (error as Error).stackTrace : "")}''');
       return;
     }
 
+    // 先取消旧定时器：showTime 解析失败时旧 timer 若存活，
+    // 会继续按旧时间戳刷出幽灵时长
+    _liveDurationTimer?.cancel();
     try {
       int startTimeStamp = int.parse(detail.value!.showTime!);
-      // 取消之前的定时器
-      _liveDurationTimer?.cancel();
       // 创建新的定时器，每秒更新一次
       _liveDurationTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
         int currentTimeStamp = DateTime.now().millisecondsSinceEpoch ~/ 1000;
