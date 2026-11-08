@@ -85,7 +85,7 @@ index 0000000..69fc5aa
 +  '';
 +}
 diff --git a/nix/packages/mk-pkg-mpv/default.nix b/nix/packages/mk-pkg-mpv/default.nix
-index 543805a..36fca40 100644
+index 543805a..e2130d8 100644
 --- a/nix/packages/mk-pkg-mpv/default.nix
 +++ b/nix/packages/mk-pkg-mpv/default.nix
 @@ -26,6 +26,7 @@ let
@@ -156,6 +156,14 @@ index 543805a..36fca40 100644
        -Dmacos-cocoa-cb=disabled `# macOS libmpv backend`
        -Dmacos-media-player=disabled `# macOS Media Player support`
        -Dmacos-touchbar=disabled `# macOS Touch Bar support`
+@@ -214,6 +206,7 @@ pkgs.stdenvNoCC.mkDerivation {
+     MACOS_OPTIONS=(
+       `# audio output features`
+       -Dcoreaudio=enabled `# CoreAudio audio output`
++      -Davfoundation=enabled `# AVFoundation audio output`
+ 
+       `# video output features`
+       -Dcocoa=enabled `# Cocoa` `# BUG: required in audio mode since v0.36.0`
 diff --git a/packages.lock.nix b/packages.lock.nix
 index aed6a72..c1afff1 100644
 --- a/packages.lock.nix
