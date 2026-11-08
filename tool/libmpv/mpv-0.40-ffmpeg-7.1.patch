@@ -15,7 +15,7 @@ new file mode 100644
 index 0000000..69fc5aa
 --- /dev/null
 +++ b/nix/packages/mk-pkg-libplacebo/default.nix
-@@ -0,0 +1,84 @@
+@@ -0,0 +1,98 @@
 +{
 +  pkgs ? import ../../utils/default/pkgs.nix,
 +  os ? import ../../utils/default/os.nix,
@@ -31,6 +31,9 @@ index 0000000..69fc5aa
 +  callPackage = pkgs.lib.callPackageWith { inherit pkgs os arch; };
 +  nativeFile = callPackage ../../utils/native-file/default.nix { };
 +  crossFile = callPackage ../../utils/cross-file/default.nix { };
++  xctoolchainInstallNameTool = callPackage ../../utils/xctoolchain/install-name-tool.nix { };
++  # meson's install step rewrites rpaths on darwin and shells out to otool.
++  xctoolchainOtool = callPackage ../../utils/xctoolchain/otool.nix { };
 +
 +  pname = import ../../utils/name/package.nix name;
 +  src = callPackage ../../utils/fetch-tarball/default.nix {
@@ -38,9 +41,12 @@ index 0000000..69fc5aa
 +    inherit (packageLock) url sha256;
 +  };
 +
-+  # Upstream pins glad/jinja/markupsafe as git submodules under 3rdparty/;
-+  # GitHub tarballs ship those dirs empty, but meson resolves them from
-+  # PYTHONPATH (see python_env in meson.build), so fetch and fill them in.
++  # Upstream keeps these as git submodules under 3rdparty/ and the source
++  # tarball ships the dirs empty: glad/jinja/markupsafe are imported from
++  # PYTHONPATH (python_env in meson.build) to generate the GL headers;
++  # Vulkan-Headers is included unconditionally even with -Dvulkan=disabled
++  # (vulkan/stubs.c, libplacebo/vulkan.h); fast_float headers are added to
++  # the include path when present.
 +  fetch3rdparty =
 +    dep:
 +    callPackage ../../utils/fetch-tarball/default.nix {
@@ -64,6 +70,8 @@ index 0000000..69fc5aa
 +    pkgs.ninja
 +    pkgs.pkg-config
 +    pkgs.python3
++    xctoolchainInstallNameTool
++    xctoolchainOtool
 +  ];
 +  configurePhase = ''
 +    cp -R $src src-tree
@@ -71,6 +79,8 @@ index 0000000..69fc5aa
 +    cp -R ${fetch3rdparty "glad"}/. src-tree/3rdparty/glad/
 +    cp -R ${fetch3rdparty "jinja"}/. src-tree/3rdparty/jinja/
 +    cp -R ${fetch3rdparty "markupsafe"}/. src-tree/3rdparty/markupsafe/
++    cp -R ${fetch3rdparty "fast-float"}/. src-tree/3rdparty/fast_float/
++    cp -R ${fetch3rdparty "vulkan-headers"}/. src-tree/3rdparty/Vulkan-Headers/
 +    meson setup build src-tree \
 +      --native-file ${nativeFile} \
 +      --cross-file ${crossFile} \
@@ -79,7 +89,7 @@ index 0000000..69fc5aa
 +      -Dvulkan=disabled \
 +      -Dvk-proc-addr=disabled \
 +      -Dopengl=enabled \
-+      -Dgl-proc-addr=enabled \
++      -Dgl-proc-addr=disabled \
 +      -Dd3d11=disabled \
 +      -Dglslang=disabled \
 +      -Dshaderc=disabled \
@@ -98,6 +108,10 @@ index 0000000..69fc5aa
 +  '';
 +  installPhase = ''
 +    meson install -C build
++    for file in $out/lib/libplacebo*.dylib; do
++      [ -L "$file" ] && continue
++      install_name_tool -id @rpath/$(basename $file) $file
++    done
 +  '';
 +}
 diff --git a/nix/packages/mk-pkg-mpv/default.nix b/nix/packages/mk-pkg-mpv/default.nix
@@ -197,7 +211,7 @@ index aed6a72..c1afff1 100644
    };
    fftools-ffi = {
      version = "9b0d4da0";
-@@ -75,9 +75,29 @@
+@@ -75,9 +75,39 @@
      sha256 = "a420fcf7103e54e775c383e3751729b8fb2dcd087f6165befd13f28315f754f5";
    };
    mpv = {
@@ -227,6 +241,16 @@ index aed6a72..c1afff1 100644
 +    version = "c0254f0cfe51720ecc9e72e8896022af29af5b44";
 +    url = "https://github.com/pallets/markupsafe/archive/c0254f0cfe51720ecc9e72e8896022af29af5b44.tar.gz";
 +    sha256 = "1826c5d89cc1aa0b3088f538726d339e0c5cd69fbe03f7b8f9a3f880474d1120";
++  };
++  libplacebo-fast-float = {
++    version = "2b2395f9ac836ffca6404424bcc252bff7aa80e4";
++    url = "https://github.com/fastfloat/fast_float/archive/2b2395f9ac836ffca6404424bcc252bff7aa80e4.tar.gz";
++    sha256 = "230d20e4e4ac1f6a9df92c4d746c6ec536cdb0c085bc8635d4b88cead5dc22cb";
++  };
++  libplacebo-vulkan-headers = {
++    version = "d732b2de303ce505169011d438178191136bfb00";
++    url = "https://github.com/KhronosGroup/Vulkan-Headers/archive/d732b2de303ce505169011d438178191136bfb00.tar.gz";
++    sha256 = "570f9ae1e65466dbaf5fcab667abd079dd0a61c4ab86cf535efd492bf70a5b74";
    };
    uchardet = {
      version = "0.0.8";
