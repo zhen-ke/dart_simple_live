@@ -15,7 +15,7 @@ new file mode 100644
 index 0000000..69fc5aa
 --- /dev/null
 +++ b/nix/packages/mk-pkg-libplacebo/default.nix
-@@ -0,0 +1,68 @@
+@@ -0,0 +1,84 @@
 +{
 +  pkgs ? import ../../utils/default/pkgs.nix,
 +  os ? import ../../utils/default/os.nix,
@@ -24,7 +24,8 @@ index 0000000..69fc5aa
 +
 +let
 +  name = "libplacebo";
-+  packageLock = (import ../../../packages.lock.nix).${name};
++  lock = import ../../../packages.lock.nix;
++  packageLock = lock.${name};
 +  inherit (packageLock) version;
 +
 +  callPackage = pkgs.lib.callPackageWith { inherit pkgs os arch; };
@@ -36,6 +37,16 @@ index 0000000..69fc5aa
 +    name = "${pname}-source-${version}";
 +    inherit (packageLock) url sha256;
 +  };
++
++  # Upstream pins glad/jinja/markupsafe as git submodules under 3rdparty/;
++  # GitHub tarballs ship those dirs empty, but meson resolves them from
++  # PYTHONPATH (see python_env in meson.build), so fetch and fill them in.
++  fetch3rdparty =
++    dep:
++    callPackage ../../utils/fetch-tarball/default.nix {
++      name = "${pname}-3rdparty-${dep}";
++      inherit (lock."${name}-${dep}") url sha256;
++    };
 +in
 +
 +# mpv >= 0.38 makes libplacebo a hard dependency. Only the OpenGL
@@ -55,7 +66,12 @@ index 0000000..69fc5aa
 +    pkgs.python3
 +  ];
 +  configurePhase = ''
-+    meson setup build $src \
++    cp -R $src src-tree
++    chmod -R u+w src-tree/3rdparty
++    cp -R ${fetch3rdparty "glad"}/. src-tree/3rdparty/glad/
++    cp -R ${fetch3rdparty "jinja"}/. src-tree/3rdparty/jinja/
++    cp -R ${fetch3rdparty "markupsafe"}/. src-tree/3rdparty/markupsafe/
++    meson setup build src-tree \
 +      --native-file ${nativeFile} \
 +      --cross-file ${crossFile} \
 +      --prefix=$out \
@@ -181,7 +197,7 @@ index aed6a72..c1afff1 100644
    };
    fftools-ffi = {
      version = "9b0d4da0";
-@@ -75,9 +75,14 @@
+@@ -75,9 +75,29 @@
      sha256 = "a420fcf7103e54e775c383e3751729b8fb2dcd087f6165befd13f28315f754f5";
    };
    mpv = {
@@ -196,6 +212,21 @@ index aed6a72..c1afff1 100644
 +    version = "7.349.0";
 +    url = "https://github.com/haasn/libplacebo/archive/refs/tags/v7.349.0.tar.gz";
 +    sha256 = "627e32439a0b3d2b90368ead7e919f470ee7446c87cc0f7841bbe319b23aa8b1";
++  };
++  libplacebo-glad = {
++    version = "d08b1aa01f8fe57498f04d47b5fa8c48725be877";
++    url = "https://github.com/Dav1dde/glad/archive/d08b1aa01f8fe57498f04d47b5fa8c48725be877.tar.gz";
++    sha256 = "7a5fb3299a20e8088a504f3bb2b7247d85c4207706754180a1b4a4840a8728e4";
++  };
++  libplacebo-jinja = {
++    version = "b08cd4bc64bb980df86ed2876978ae5735572280";
++    url = "https://github.com/pallets/jinja/archive/b08cd4bc64bb980df86ed2876978ae5735572280.tar.gz";
++    sha256 = "9a20bab550a760ccb9b38a45d4fe76be92649206ee04633c646d0935a1872b0e";
++  };
++  libplacebo-markupsafe = {
++    version = "c0254f0cfe51720ecc9e72e8896022af29af5b44";
++    url = "https://github.com/pallets/markupsafe/archive/c0254f0cfe51720ecc9e72e8896022af29af5b44.tar.gz";
++    sha256 = "1826c5d89cc1aa0b3088f538726d339e0c5cd69fbe03f7b8f9a3f880474d1120";
    };
    uchardet = {
      version = "0.0.8";
