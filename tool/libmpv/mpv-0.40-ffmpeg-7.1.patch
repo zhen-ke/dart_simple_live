@@ -274,6 +274,19 @@ index 58bffce..0000000
 -         pls->seek_timestamp = seek_timestamp;
 -         pls->seek_flags = flags;
 - 
+diff --git a/patches/ffmpeg-fix-vp9-hwaccel.patch b/patches/ffmpeg-fix-vp9-hwaccel.patch
+index e593ad1..0000000 100644
+--- a/patches/ffmpeg-fix-vp9-hwaccel.patch
++++ b/patches/ffmpeg-fix-vp9-hwaccel.patch
+@@ -34,7 +34,7 @@
+ +    .p.capabilities        = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS | AV_CODEC_CAP_SLICE_THREADS,
+ +    .caps_internal         = FF_CODEC_CAP_INIT_CLEANUP |
+ +                                FF_CODEC_CAP_SLICE_THREAD_HAS_MF |
+-+                                FF_CODEC_CAP_ALLOCATE_PROGRESS,
+++                                FF_CODEC_CAP_USES_PROGRESSFRAMES,
+ +    .flush                 = vp9_decode_flush,
+ +    UPDATE_THREAD_CONTEXT(vp9_decode_update_thread_context),
+ +    .p.profiles            = NULL_IF_CONFIG_SMALL(ff_vp9_profiles),
 diff --git a/patches/mpv-audiounit-shared-session.patch b/patches/mpv-audiounit-shared-session.patch
 index e0ec97d..4ec51be 100644
 --- a/patches/mpv-audiounit-shared-session.patch
