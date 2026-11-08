@@ -53,6 +53,8 @@ jobs:
         run: |
           git apply --check ../app/tool/libmpv/mpv-0.40-ffmpeg-7.1.patch
           git apply ../app/tool/libmpv/mpv-0.40-ffmpeg-7.1.patch
+          # flake 构建只收集 git 已跟踪文件，补丁新增的文件必须先入 index
+          git add -A
           git status --short
 
       - uses: DeterminateSystems/nix-installer-action@v22
