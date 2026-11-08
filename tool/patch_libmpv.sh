@@ -31,8 +31,8 @@ if [ -z "$PKG_DIR" ]; then
 fi
 
 MAKEFILE="$PKG_DIR/macos/Makefile"
-GH_REPO="${GH_REPO:-ister-app/libmpv-darwin-build}"
-LIBMPV_TAG="${LIBMPV_TAG:-v0.8.4}"
+GH_REPO="${GH_REPO:-zhen-ke/dart_simple_live}"
+LIBMPV_TAG="${LIBMPV_TAG:-libmpv_v0.8.0}"
 VERSION="${LIBMPV_TAG#libmpv_}"
 ASSET="libmpv-xcframeworks_${VERSION}_macos-universal-video-default.tar.gz"
 URL="https://github.com/${GH_REPO}/releases/download/${LIBMPV_TAG}/${ASSET}"
