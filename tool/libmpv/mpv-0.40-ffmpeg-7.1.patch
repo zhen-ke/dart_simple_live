@@ -126,6 +126,14 @@ index 543805a..e2130d8 100644
  
    nativeBuildInputs = [
      pkgs.meson
+@@ -48,6 +48,7 @@ pkgs.stdenvNoCC.mkDerivation {
+     cd $src
+     patch -p1 <${../../../patches/mpv-fix-missing-objc.patch}
+     patch -p1 <${../../../patches/mpv-audiounit-shared-session.patch}
++    patch -p1 <${../../../patches/mpv-cocoa-without-swift.patch}
+     if [ "${variant}" == "${variants.audio}" ]; then
+       patch -p1 <${../../../patches/mpv-remove-libass.patch}
+     fi
 @@ -75,6 +76,7 @@ pkgs.stdenvNoCC.mkDerivation {
      ++ pkgs.lib.optionals (variant == "video") [
        uchardet
@@ -194,6 +202,80 @@ index 543805a..e2130d8 100644
  
        `# video output features`
        -Dcocoa=enabled `# Cocoa` `# BUG: required in audio mode since v0.36.0`
+diff --git a/patches/mpv-cocoa-without-swift.patch b/patches/mpv-cocoa-without-swift.patch
+new file mode 100644
+index 0000000..0000000
+--- /dev/null
++++ b/patches/mpv-cocoa-without-swift.patch
+@@ -0,0 +1,68 @@
++--- a/meson.build	2026-11-08 14:19:09
+++++ b/meson.build	2026-11-08 14:18:58
++@@ -414,8 +414,12 @@
++     sources += files('osdep/language-mac.c',
++                      'osdep/path-mac.m',
++                      'osdep/utils-mac.c',
++-                     'osdep/mac/app_bridge.m',
++-                     'player/clipboard/clipboard-mac.m')
+++                     'osdep/mac/app_bridge.m')
+++    # clipboard-mac.m needs the generated Swift bridge header
+++    # (osdep/mac/swift.h), which only exists when swift-build is enabled
+++    if get_option('swift-build').allowed()
+++        sources += files('player/clipboard/clipboard-mac.m')
+++    endif
++     main_fn_source = files('osdep/main-fn-mac.c')
++ endif
++ 
++--- a/player/clipboard/clipboard.c	2026-11-08 14:19:09
+++++ b/player/clipboard/clipboard.c	2026-11-08 14:18:58
++@@ -37,7 +37,7 @@
++ #if HAVE_WIN32_DESKTOP
++     &clipboard_backend_win32,
++ #endif
++-#if HAVE_COCOA
+++#if HAVE_COCOA && HAVE_SWIFT
++     &clipboard_backend_mac,
++ #endif
++ #if HAVE_WAYLAND_PROTOCOLS_1_39
++--- a/player/main.c	2026-11-08 14:19:09
+++++ b/player/main.c	2026-11-08 14:18:58
++@@ -188,7 +188,7 @@
++ 
++     osd_free(mpctx->osd);
++ 
++-#if HAVE_COCOA
+++#if HAVE_COCOA && HAVE_SWIFT
++     cocoa_set_input_context(NULL);
++ #endif
++ 
++@@ -311,7 +311,7 @@
++     mp_clients_init(mpctx);
++     mpctx->osd = osd_create(mpctx->global);
++ 
++-#if HAVE_COCOA
+++#if HAVE_COCOA && HAVE_SWIFT
++     cocoa_set_input_context(mpctx->input);
++ #endif
++ 
++@@ -401,7 +401,7 @@
++ 
++     MP_STATS(mpctx, "start init");
++ 
++-#if HAVE_COCOA
+++#if HAVE_COCOA && HAVE_SWIFT
++     mpv_handle *ctx = mp_new_client(mpctx->clients, "mac");
++     cocoa_set_mpv_handle(ctx);
++ #endif
++--- a/input/input.c	2026-11-08 14:19:09
+++++ b/input/input.c	2026-11-08 14:18:58
++@@ -1526,7 +1526,7 @@
++ {
++     m_config_cache_update(ictx->opts_cache);
++ 
++-#if HAVE_COCOA
+++#if HAVE_COCOA && HAVE_SWIFT
++     struct input_opts *opts = ictx->opts;
++ 
++     if (ictx->using_cocoa_media_keys != (opts->use_media_keys && !shutdown)) {
 diff --git a/packages.lock.nix b/packages.lock.nix
 index aed6a72..c1afff1 100644
 --- a/packages.lock.nix
